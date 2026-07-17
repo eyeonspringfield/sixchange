@@ -11,7 +11,7 @@ namespace sixchange {
     using ClientOrderId     = std::uint64_t;
     using SymbolId          = std::uint32_t;
 
-    using Price             = std::int64_t;
+    using Price             = std::uint64_t;
     using Quantity          = std::uint64_t;
 
 } // namespace sixchange

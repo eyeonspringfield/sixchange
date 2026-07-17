@@ -48,7 +48,8 @@ namespace sixchange {
         UnknownOrder,
         NotOrderOwner,
         UnsupportedOrderType,
-        UnsupportedTimeInForce
+        UnsupportedTimeInForce,
+        Ga
     };
 
     enum class LiquidityFlag : std::uint8_t {

@@ -7,9 +7,8 @@
 namespace sixchange {
     OrderBook::OrderBook(const SymbolId symbol_id): symbol_id_(symbol_id) {
         for (std::size_t i{0}; i < OrderBookMaxPriceTicks; ++i) {
-            const auto price = static_cast<Price>(i);
-            bids_[i].price = price;
-            asks_[i].price = price;
+            bids_[i].price = i;
+            asks_[i].price = i;
         }
     }
 

@@ -11,10 +11,7 @@ namespace sixchange {
 
     MatchingEngine &MatchingEngine::operator=(MatchingEngine &&) noexcept = default;
 
-    void MatchingEngine::process(const EngineCommand &command,
-                                 EventBuffer<OrderBookMaxEventsPerCommand> &events) noexcept {
-        events.clear();
-
+    void MatchingEngine::process(const EngineCommand &command) noexcept {
         switch (command.type) {
             case CommandType::NewOrder:
                 order_book_->add(command.new_order, next_order_id_++);

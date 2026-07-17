@@ -20,8 +20,7 @@ namespace sixchange {
         MatchingEngine(MatchingEngine &&) noexcept;
         MatchingEngine &operator=(MatchingEngine &&) noexcept;
 
-        void process(const EngineCommand &command,
-                     EventBuffer<OrderBookMaxEventsPerCommand> &events) noexcept;
+        void process(const EngineCommand &command) noexcept;
 
         [[nodiscard]] const OrderBook& order_book() const noexcept {
             return *order_book_;

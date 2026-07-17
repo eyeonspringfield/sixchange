@@ -11,7 +11,6 @@ TEST(MatchingEngineTest, ProcessesNewBuyOrder)
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};
-    EventBuffer<OrderBookMaxEventsPerCommand> events;
 
     constexpr EngineCommand command{
         .type = CommandType::NewOrder,
@@ -28,7 +27,7 @@ TEST(MatchingEngineTest, ProcessesNewBuyOrder)
         }
     };
 
-    engine.process(command, events);
+    engine.process(command);
 
     const PriceLevel& level =
         engine.order_book().bid_level(100);
@@ -47,7 +46,6 @@ TEST(MatchingEngineTest, ProcessesNewSellOrder)
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};
-    EventBuffer<OrderBookMaxEventsPerCommand> events;
 
     constexpr EngineCommand command{
         .type = CommandType::NewOrder,
@@ -64,7 +62,7 @@ TEST(MatchingEngineTest, ProcessesNewSellOrder)
         }
     };
 
-    engine.process(command, events);
+    engine.process(command);
 
     const PriceLevel& level =
         engine.order_book().ask_level(105);
@@ -83,7 +81,6 @@ TEST(MatchingEngineTest, AssignsIncreasingOrderIds)
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};
-    EventBuffer<OrderBookMaxEventsPerCommand> events;
 
     constexpr EngineCommand first{
         .type = CommandType::NewOrder,
@@ -115,8 +112,8 @@ TEST(MatchingEngineTest, AssignsIncreasingOrderIds)
         }
     };
 
-    engine.process(first, events);
-    engine.process(second, events);
+    engine.process(first);
+    engine.process(second);
 
     const PriceLevel& first_level =
         engine.order_book().bid_level(100);

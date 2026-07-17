@@ -1,8 +1,18 @@
-//
-// Created by vsrbdev on 6/20/26.
-//
+#pragma once
 
-#ifndef EXCHANGE_ENGINE_SEQUENCER_H
-#define EXCHANGE_ENGINE_SEQUENCER_H
+#include <sixchange/core/Types.h>
 
-#endif //EXCHANGE_ENGINE_SEQUENCER_H
+namespace sixchange {
+
+    class Sequencer {
+    public:
+        explicit Sequencer(
+            SequenceNumber first_sequence = SequenceNumber{1}
+        ) noexcept;
+
+        [[nodiscard]] SequenceNumber next() noexcept;
+
+    private:
+        SequenceNumber next_sequence_;
+    };
+}

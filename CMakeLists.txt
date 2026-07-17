@@ -10,6 +10,8 @@ add_library(sixchange_engine
         src/engine/OrderBook.cpp
         src/engine/MatchingEngine.cpp
         src/engine/Sequencer.cpp
+        src/protocol/TextCodec.cpp
+        src/gateway/OrderGateway.cpp
 )
 
 target_compile_features(sixchange_engine
