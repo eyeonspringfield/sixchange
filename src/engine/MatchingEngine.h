@@ -9,27 +9,27 @@
 
 namespace sixchange {
 
-    class MatchingEngine {
-    public:
-        explicit MatchingEngine(SymbolId symbol_id);
-        ~MatchingEngine();
+class MatchingEngine {
+public:
+    explicit MatchingEngine(SymbolId symbol_id);
+    ~MatchingEngine();
 
-        MatchingEngine(const MatchingEngine &) = delete;
-        MatchingEngine &operator=(const MatchingEngine &) = delete;
+    MatchingEngine(const MatchingEngine&) = delete;
+    MatchingEngine& operator=(const MatchingEngine&) = delete;
 
-        MatchingEngine(MatchingEngine &&) noexcept;
-        MatchingEngine &operator=(MatchingEngine &&) noexcept;
+    MatchingEngine(MatchingEngine&&) noexcept;
+    MatchingEngine& operator=(MatchingEngine&&) noexcept;
 
-        void process(const EngineCommand &command) noexcept;
+    void process(const EngineCommand& command) noexcept;
 
-        [[nodiscard]] const OrderBook& order_book() const noexcept {
-            return *order_book_;
-        }
+    [[nodiscard]] const OrderBook& order_book() const noexcept {
+        return *order_book_;
+    }
 
-    private:
-        std::unique_ptr<OrderBook> order_book_;
-        OrderId next_order_id_{1};
-        TradeId next_trade_id_{1};
-    };
+private:
+    std::unique_ptr<OrderBook> order_book_;
+    OrderId next_order_id_{1};
+    TradeId next_trade_id_{1};
+};
 
 } // namespace sixchange

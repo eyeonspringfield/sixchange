@@ -1,0 +1,241 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "description": "Debug build with tests and without sanitizers",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": true,
+        "SIXCHANGE_ENABLE_SANITIZERS": false,
+        "SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS": false,
+        "SIXCHANGE_ENABLE_IPO": false
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan",
+      "description": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": true,
+        "SIXCHANGE_ENABLE_SANITIZERS": true,
+        "SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS": false,
+        "SIXCHANGE_ENABLE_IPO": false
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release - Portable",
+      "description": "Optimized CPU-portable Release build with IPO/LTO",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": false,
+        "SIXCHANGE_ENABLE_SANITIZERS": false,
+        "SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS": false,
+        "SIXCHANGE_ENABLE_IPO": true
+      }
+    },
+    {
+      "name": "release-native",
+      "displayName": "Release - Native",
+      "description": "Optimized Release build with IPO/LTO and native CPU instructions",
+      "inherits": "release",
+      "cacheVariables": {
+        "SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "displayName": "Build Debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "asan",
+      "displayName": "Build ASan + UBSan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "release",
+      "displayName": "Build Portable Release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release-native",
+      "displayName": "Build Native Release",
+      "configurePreset": "release-native"
+    },
+    {
+      "name": "tests-debug",
+      "displayName": "Build Debug Tests",
+      "configurePreset": "debug",
+      "targets": [
+        "sixchange_tests"
+      ]
+    },
+    {
+      "name": "tests-asan",
+      "displayName": "Build Sanitized Tests",
+      "configurePreset": "asan",
+      "targets": [
+        "sixchange_tests"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "tests",
+      "displayName": "Run Debug Tests",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "asan-tests",
+      "displayName": "Run Tests with ASan + UBSan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "debug-build",
+      "displayName": "Configure and Build Debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "debug"
+        }
+      ]
+    },
+    {
+      "name": "asan-build",
+      "displayName": "Configure and Build ASan + UBSan",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "asan"
+        },
+        {
+          "type": "build",
+          "name": "asan"
+        }
+      ]
+    },
+    {
+      "name": "release-build",
+      "displayName": "Configure and Build Portable Release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "release"
+        },
+        {
+          "type": "build",
+          "name": "release"
+        }
+      ]
+    },
+    {
+      "name": "release-native-build",
+      "displayName": "Configure and Build Native Release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "release-native"
+        },
+        {
+          "type": "build",
+          "name": "release-native"
+        }
+      ]
+    },
+    {
+      "name": "test-build",
+      "displayName": "Configure Debug and Build Tests",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "tests-debug"
+        }
+      ]
+    },
+    {
+      "name": "run-tests",
+      "displayName": "Configure, Build, and Run Tests",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "tests-debug"
+        },
+        {
+          "type": "test",
+          "name": "tests"
+        }
+      ]
+    },
+    {
+      "name": "run-asan-tests",
+      "displayName": "Configure, Build, and Run Sanitized Tests",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "asan"
+        },
+        {
+          "type": "build",
+          "name": "tests-asan"
+        },
+        {
+          "type": "test",
+          "name": "asan-tests"
+        }
+      ]
+    }
+  ]
+}

@@ -4,8 +4,7 @@
 
 namespace sixchange {
 
-TEST(PriceLevelTest, IsEmptyByDefault)
-{
+TEST(PriceLevelTest, IsEmptyByDefault) {
     const PriceLevel level{};
 
     EXPECT_TRUE(level.empty());
@@ -15,8 +14,7 @@ TEST(PriceLevelTest, IsEmptyByDefault)
     EXPECT_EQ(level.front(), nullptr);
 }
 
-TEST(PriceLevelTest, PushBackAddsFirstOrder)
-{
+TEST(PriceLevelTest, PushBackAddsFirstOrder) {
     PriceLevel level{};
 
     Order order{
@@ -38,8 +36,7 @@ TEST(PriceLevelTest, PushBackAddsFirstOrder)
     EXPECT_EQ(level.total_quantity, 10);
 }
 
-TEST(PriceLevelTest, PushBackPreservesFifoOrder)
-{
+TEST(PriceLevelTest, PushBackPreservesFifoOrder) {
     PriceLevel level{};
 
     Order first{
@@ -77,8 +74,7 @@ TEST(PriceLevelTest, PushBackPreservesFifoOrder)
     EXPECT_EQ(level.total_quantity, 60);
 }
 
-TEST(PriceLevelTest, RemoveOnlyOrderEmptiesLevel)
-{
+TEST(PriceLevelTest, RemoveOnlyOrderEmptiesLevel) {
     PriceLevel level{};
 
     Order order{
@@ -99,8 +95,7 @@ TEST(PriceLevelTest, RemoveOnlyOrderEmptiesLevel)
     EXPECT_EQ(order.next, nullptr);
 }
 
-TEST(PriceLevelTest, RemoveHeadUpdatesHead)
-{
+TEST(PriceLevelTest, RemoveHeadUpdatesHead) {
     PriceLevel level{};
 
     Order first{
@@ -131,8 +126,7 @@ TEST(PriceLevelTest, RemoveHeadUpdatesHead)
     EXPECT_EQ(level.total_quantity, 20);
 }
 
-TEST(PriceLevelTest, RemoveTailUpdatesTail)
-{
+TEST(PriceLevelTest, RemoveTailUpdatesTail) {
     PriceLevel level{};
 
     Order first{
@@ -163,8 +157,7 @@ TEST(PriceLevelTest, RemoveTailUpdatesTail)
     EXPECT_EQ(level.total_quantity, 10);
 }
 
-TEST(PriceLevelTest, RemoveMiddleOrderReconnectsNeighbors)
-{
+TEST(PriceLevelTest, RemoveMiddleOrderReconnectsNeighbors) {
     PriceLevel level{};
 
     Order first{
@@ -203,8 +196,7 @@ TEST(PriceLevelTest, RemoveMiddleOrderReconnectsNeighbors)
     EXPECT_EQ(level.total_quantity, 40);
 }
 
-TEST(PriceLevelTest, RemoveSubtractsRemainingQuantity)
-{
+TEST(PriceLevelTest, RemoveSubtractsRemainingQuantity) {
     PriceLevel level{};
 
     Order first{
@@ -225,8 +217,7 @@ TEST(PriceLevelTest, RemoveSubtractsRemainingQuantity)
     EXPECT_EQ(level.total_quantity, 50);
 }
 
-TEST(PriceLevelTest, CanAppendAfterRemovingTail)
-{
+TEST(PriceLevelTest, CanAppendAfterRemovingTail) {
     PriceLevel level{};
 
     Order first{

@@ -6,8 +6,7 @@
 
 namespace sixchange {
 
-TEST(MatchingEngineTest, ProcessesNewBuyOrder)
-{
+TEST(MatchingEngineTest, ProcessesNewBuyOrder) {
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};
@@ -41,8 +40,7 @@ TEST(MatchingEngineTest, ProcessesNewBuyOrder)
     EXPECT_EQ(level.front()->price, 100);
 }
 
-TEST(MatchingEngineTest, ProcessesNewSellOrder)
-{
+TEST(MatchingEngineTest, ProcessesNewSellOrder) {
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};
@@ -76,8 +74,7 @@ TEST(MatchingEngineTest, ProcessesNewSellOrder)
     EXPECT_EQ(level.front()->price, 105);
 }
 
-TEST(MatchingEngineTest, AssignsIncreasingOrderIds)
-{
+TEST(MatchingEngineTest, AssignsIncreasingOrderIds) {
     constexpr SymbolId symbol_id{1};
 
     MatchingEngine engine{symbol_id};

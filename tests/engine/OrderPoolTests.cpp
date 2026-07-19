@@ -4,8 +4,7 @@
 
 namespace sixchange {
 
-TEST(OrderPoolTest, AllocatesOrderWithinCapacity)
-{
+TEST(OrderPoolTest, AllocatesOrderWithinCapacity) {
     OrderPool<1> pool;
 
     Order* order = pool.allocate();
@@ -13,8 +12,7 @@ TEST(OrderPoolTest, AllocatesOrderWithinCapacity)
     ASSERT_NE(order, nullptr);
 }
 
-TEST(OrderPoolTest, ReturnsNullWhenCapacityIsExhausted)
-{
+TEST(OrderPoolTest, ReturnsNullWhenCapacityIsExhausted) {
     OrderPool<2> pool;
 
     Order* first = pool.allocate();
@@ -26,8 +24,7 @@ TEST(OrderPoolTest, ReturnsNullWhenCapacityIsExhausted)
     EXPECT_EQ(third, nullptr);
 }
 
-TEST(OrderPoolTest, AllocatesDistinctOrders)
-{
+TEST(OrderPoolTest, AllocatesDistinctOrders) {
     OrderPool<2> pool;
 
     Order* first = pool.allocate();
@@ -39,8 +36,7 @@ TEST(OrderPoolTest, AllocatesDistinctOrders)
     EXPECT_NE(first, second);
 }
 
-TEST(OrderPoolTest, NewlyAllocatedOrderIsValueInitialized)
-{
+TEST(OrderPoolTest, NewlyAllocatedOrderIsValueInitialized) {
     OrderPool<1> pool;
 
     Order* order = pool.allocate();
@@ -59,8 +55,7 @@ TEST(OrderPoolTest, NewlyAllocatedOrderIsValueInitialized)
     EXPECT_FALSE(order->active);
 }
 
-TEST(OrderPoolTest, ReusesReleasedOrder)
-{
+TEST(OrderPoolTest, ReusesReleasedOrder) {
     OrderPool<1> pool;
 
     Order* first = pool.allocate();
@@ -76,8 +71,7 @@ TEST(OrderPoolTest, ReusesReleasedOrder)
     EXPECT_EQ(second, first);
 }
 
-TEST(OrderPoolTest, ResetsOrderWhenReleasedAndReallocated)
-{
+TEST(OrderPoolTest, ResetsOrderWhenReleasedAndReallocated) {
     OrderPool<1> pool;
 
     Order* order = pool.allocate();
@@ -111,8 +105,7 @@ TEST(OrderPoolTest, ResetsOrderWhenReleasedAndReallocated)
     EXPECT_FALSE(reused->active);
 }
 
-TEST(OrderPoolTest, ReleasedOrderBecomesAvailableAfterCapacityExhaustion)
-{
+TEST(OrderPoolTest, ReleasedOrderBecomesAvailableAfterCapacityExhaustion) {
     OrderPool<2> pool;
 
     Order* first = pool.allocate();
@@ -132,8 +125,7 @@ TEST(OrderPoolTest, ReleasedOrderBecomesAvailableAfterCapacityExhaustion)
     EXPECT_EQ(reused, first);
 }
 
-TEST(OrderPoolTest, ReusesReleasedOrdersInLifoOrder)
-{
+TEST(OrderPoolTest, ReusesReleasedOrdersInLifoOrder) {
     OrderPool<3> pool;
 
     Order* first = pool.allocate();
@@ -154,8 +146,7 @@ TEST(OrderPoolTest, ReusesReleasedOrdersInLifoOrder)
     EXPECT_EQ(reused_second, first);
 }
 
-TEST(OrderPoolTest, ReusedOrderDoesNotReduceTotalPoolCapacity)
-{
+TEST(OrderPoolTest, ReusedOrderDoesNotReduceTotalPoolCapacity) {
     OrderPool<2> pool;
 
     Order* first = pool.allocate();

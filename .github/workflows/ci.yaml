@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.compiler.name }} / ${{ matrix.configuration.name }}
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        compiler:
+          - name: GCC 14
+            cc: gcc-14
+            cxx: g++-14
+
+          - name: Clang 18
+            cc: clang-18
+            cxx: clang++-18
+
+        configuration:
+          - name: Debug + tests
+            configure_preset: debug
+            build_preset: debug
+            test_preset: tests
+
+          - name: ASan + UBSan tests
+            configure_preset: asan
+            build_preset: asan
+            test_preset: asan-tests
+
+          - name: Portable Release
+            configure_preset: release
+            build_preset: release
+            test_preset: ""
+
+          - name: Native Release
+            configure_preset: release-native
+            build_preset: release-native
+            test_preset: ""
+
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Show toolchain versions
+        run: |
+          cmake --version
+          ninja --version
+          "$CC" --version
+          "$CXX" --version
+
+      - name: Configure
+        run: |
+          cmake \
+            --preset "${{ matrix.configuration.configure_preset }}" \
+            -DSIXCHANGE_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: |
+          cmake \
+            --build \
+            --preset "${{ matrix.configuration.build_preset }}" \
+            --parallel
+
+      - name: Run tests
+        if: matrix.configuration.test_preset != ''
+        run: |
+          ctest \
+            --preset "${{ matrix.configuration.test_preset }}"
+
+  clang-tidy:
+    name: Clang-Tidy
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    env:
+      CC: clang-18
+      CXX: clang++-18
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Configure compile database
+        run: |
+          cmake \
+            --preset debug \
+            -DSIXCHANGE_WARNINGS_AS_ERRORS=ON
+
+      - name: Verify compile database exists
+        run: |
+          test -f build/debug/compile_commands.json
+
+      - name: Run Clang-Tidy
+        shell: bash
+        run: |
+          mapfile -d '' sources < <(
+            find src tests \
+              -type f \
+              \( \
+                -name '*.cpp' \
+                -o -name '*.cc' \
+                -o -name '*.cxx' \
+              \) \
+              -print0
+          )
+
+          if ((${#sources[@]} == 0)); then
+            echo "No C++ translation units found." >&2
+            exit 1
+          fi
+
+          printf '%s\0' "${sources[@]}" |
+            xargs \
+              -0 \
+              -n 1 \
+              -P "$(nproc)" \
+              clang-tidy-18 \
+              -p build/debug \
+              --quiet

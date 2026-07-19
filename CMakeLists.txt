@@ -6,6 +6,98 @@ project(
         LANGUAGES CXX
 )
 
+option(
+        SIXCHANGE_ENABLE_SANITIZERS
+        "Enable ASan and UBSan"
+        OFF
+)
+
+option(
+        SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS
+        "Optimize Release builds for the CPU compiling Sixchange"
+        OFF
+)
+
+option(
+        SIXCHANGE_ENABLE_IPO
+        "Enable IPO/LTO in Release builds"
+        OFF
+)
+
+option(
+        SIXCHANGE_WARNINGS_AS_ERRORS
+        "Treat Sixchange compiler warnings as errors"
+        OFF
+)
+
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(FATAL_ERROR
+            "Unsupported compiler!"
+    )
+endif()
+
+if(SIXCHANGE_ENABLE_IPO)
+    include(CheckIPOSupported)
+
+    check_ipo_supported(
+            RESULT SIXCHANGE_IPO_SUPPORTED
+            OUTPUT SIXCHANGE_IPO_ERROR
+            LANGUAGES CXX
+    )
+
+    if(NOT SIXCHANGE_IPO_SUPPORTED)
+        message(FATAL_ERROR
+                "IPO/LTO was requested but is not supported: "
+                "${SIXCHANGE_IPO_ERROR}"
+        )
+    endif()
+
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+endif()
+
+
+add_library(sixchange_build_options INTERFACE)
+
+if(SIXCHANGE_ENABLE_SANITIZERS)
+    target_compile_options(sixchange_build_options
+            INTERFACE
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+    )
+
+    target_link_options(sixchange_build_options
+            INTERFACE
+            -fsanitize=address,undefined
+    )
+endif()
+
+if(SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS)
+    target_compile_options(sixchange_build_options
+            INTERFACE
+            $<$<CONFIG:Release>:-march=native>
+            $<$<CONFIG:Release>:-mtune=native>
+    )
+endif()
+
+function(sixchange_enable_warnings target)
+    target_compile_options(${target}
+            PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wshadow
+    )
+
+    if(SIXCHANGE_WARNINGS_AS_ERRORS)
+        set_property(
+                TARGET ${target}
+                PROPERTY COMPILE_WARNING_AS_ERROR ON
+        )
+    endif()
+endfunction()
+
+
 add_library(sixchange_engine
         src/engine/OrderBook.cpp
         src/engine/MatchingEngine.cpp
@@ -19,25 +111,22 @@ target_compile_features(sixchange_engine
         cxx_std_23
 )
 
+set_target_properties(sixchange_engine PROPERTIES
+        CXX_EXTENSIONS OFF
+)
+
 target_include_directories(sixchange_engine
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_compile_options(sixchange_engine
-        PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wconversion
-        -Wshadow
-        >
-        $<$<CXX_COMPILER_ID:MSVC>:
-        /W4
-        >
+target_link_libraries(sixchange_engine
+        PUBLIC
+        sixchange_build_options
 )
+
+sixchange_enable_warnings(sixchange_engine)
 
 include(CTest)
 
@@ -50,16 +139,25 @@ if(BUILD_TESTING)
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 
-    # Relevant primarily on Windows.
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-
     FetchContent_MakeAvailable(googletest)
 
     add_executable(sixchange_tests
-            tests/OrderPoolTests.cpp
-            tests/PriceLevelTests.cpp
-            tests/OrderBookTests.cpp
-            tests/MatchingEngineTests.cpp
+            tests/engine/OrderPoolTests.cpp
+            tests/engine/PriceLevelTests.cpp
+            tests/engine/OrderBookTests.cpp
+            tests/engine/MatchingEngineTests.cpp
+            tests/protocol/TextCodecTests.cpp
+            tests/gateway/OrderGatewayTests.cpp
+            tests/integration/OrderFlowTests.cpp
+    )
+
+    target_compile_features(sixchange_tests
+            PRIVATE
+            cxx_std_23
+    )
+
+    set_target_properties(sixchange_tests PROPERTIES
+            CXX_EXTENSIONS OFF
     )
 
     target_link_libraries(sixchange_tests
@@ -68,24 +166,8 @@ if(BUILD_TESTING)
             GTest::gtest_main
     )
 
+    sixchange_enable_warnings(sixchange_tests)
+
     include(GoogleTest)
     gtest_discover_tests(sixchange_tests)
 endif()
-
-target_compile_options(sixchange_engine PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-)
-
-target_link_options(sixchange_engine PRIVATE
-        -fsanitize=address,undefined
-)
-
-target_compile_options(sixchange_tests PRIVATE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer
-)
-
-target_link_options(sixchange_tests PRIVATE
-        -fsanitize=address,undefined
-)
