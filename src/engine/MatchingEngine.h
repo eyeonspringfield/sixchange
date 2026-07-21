@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <expected>
 
 #include <sixchange/core/Commands.h>
 #include <sixchange/core/EventBuffer.h>
