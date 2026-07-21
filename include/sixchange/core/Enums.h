@@ -49,7 +49,9 @@ enum class RejectReason : std::uint8_t {
     NotOrderOwner,
     UnsupportedOrderType,
     UnsupportedTimeInForce,
-    GatewayError
+    GatewayError,
+    CapacityExhausted,
+    MatchingEngineError
 };
 
 enum class LiquidityFlag : std::uint8_t {

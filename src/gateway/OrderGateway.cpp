@@ -5,8 +5,7 @@
 
 namespace sixchange {
 
-OrderGateway::OrderGateway(MatchingEngine& engine, Sequencer& sequencer) noexcept : engine_{engine},
-    sequencer_{sequencer} {
+OrderGateway::OrderGateway(MatchingEngine& engine) noexcept : engine_{engine} {
 }
 
 protocol::OutboundMessage OrderGateway::handle(const protocol::InboundMessage& message) {
@@ -26,21 +25,13 @@ protocol::OutboundMessage OrderGateway::handle(const protocol::InboundMessage& m
         message);
 }
 
-std::optional<SymbolId> OrderGateway::resolve_symbol(std::string_view symbol) const noexcept {
+std::optional<SymbolId> OrderGateway::resolve_symbol(const std::string_view symbol) noexcept {
     // TODO Symbol registry
     if (symbol == "AAPL") {
         return SymbolId{0};
     }
 
-    if (symbol == "MSFT") {
-        return SymbolId{1};
-    }
-
     return std::nullopt;
-}
-
-OrderId OrderGateway::next_order_id() noexcept {
-    return next_order_id_++;
 }
 
 protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrderRequest& request) {
@@ -60,9 +51,7 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
         };
     }
 
-    const auto order_id = next_order_id();
-
-    const SequenceNumber sequence_number = sequencer_.next();
+    const SequenceNumber sequence_number = Sequencer::instance().next();
 
     const NewOrderCommand new_order_command{
         .seq = sequence_number,
@@ -81,7 +70,16 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
         .new_order = new_order_command
     };
 
-    engine_.process(command);
+    const auto result = engine_.process(command);
+
+    if (!result) {
+        return protocol::OrderRejected{
+            .client_order_id = request.client_order_id,
+            .reason = result.error()
+        };
+    }
+
+    const OrderId order_id = *result;
 
     client_orders_.emplace(request.client_order_id, order_id);
 

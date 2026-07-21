@@ -2,10 +2,14 @@
 
 namespace sixchange {
 
-Sequencer::Sequencer(const SequenceNumber first_sequence) noexcept : next_sequence_{first_sequence} {
+Sequencer& Sequencer::instance() noexcept
+{
+    static Sequencer sequencer;
+    return sequencer;
 }
 
-SequenceNumber Sequencer::next() noexcept {
+SequenceNumber Sequencer::next() noexcept
+{
     return next_sequence_++;
 }
 

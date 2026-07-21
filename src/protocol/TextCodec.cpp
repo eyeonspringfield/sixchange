@@ -4,6 +4,8 @@
 #include <concepts>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <variant>
 
 namespace {
 
@@ -211,11 +213,69 @@ template <std::unsigned_integral T>
     };
 }
 
+[[nodiscard]] constexpr std::string_view reject_reason_name(const RejectReason reason) noexcept {
+    switch (reason) {
+    case RejectReason::None:
+        return "NONE";
+
+    case RejectReason::InvalidMessage:
+        return "INVALID_MESSAGE";
+
+    case RejectReason::UnknownSymbol:
+        return "UNKNOWN_SYMBOL";
+
+    case RejectReason::InvalidPrice:
+        return "INVALID_PRICE";
+
+    case RejectReason::InvalidQuantity:
+        return "INVALID_QUANTITY";
+
+    case RejectReason::DuplicateClientOrderId:
+        return "DUPLICATE_CLIENT_ORDER_ID";
+
+    case RejectReason::UnknownOrder:
+        return "UNKNOWN_ORDER";
+
+    case RejectReason::NotOrderOwner:
+        return "NOT_ORDER_OWNER";
+
+    case RejectReason::UnsupportedOrderType:
+        return "UNSUPPORTED_ORDER_TYPE";
+
+    case RejectReason::UnsupportedTimeInForce:
+        return "UNSUPPORTED_TIME_IN_FORCE";
+
+    case RejectReason::GatewayError:
+        return "GATEWAY_ERROR";
+
+
+    case RejectReason::CapacityExhausted:
+        return "CAPACITY_EXHAUSTED";
+
+    case RejectReason::MatchingEngineError:
+        return "MATCHING_ENGINE_ERROR";
+    }
+
+    return "UNKNOWN_REJECT_REASON";
+}
+
+template <typename... Visitors>
+struct Overloaded : Visitors... {
+    using Visitors::operator()...;
+};
+
+template <typename... Visitors>
+Overloaded(Visitors...) -> Overloaded<Visitors...>;
+
 } // anonymous namespace
 
 namespace sixchange::protocol {
 
-TextCodec::DecodeResult TextCodec::decode(std::string_view message) const noexcept {
+TextCodec::DecodeResult TextCodec::decode(std::string_view message) noexcept {
+    if (message.size() > max_message_length) {
+        return std::unexpected<OrderRejected>({std::nullopt,RejectReason::InvalidMessage});
+    }
+
     if (!message.empty() && message.back() == '\r') {
         message.remove_suffix(1);
     }
@@ -233,6 +293,49 @@ TextCodec::DecodeResult TextCodec::decode(std::string_view message) const noexce
     }
 
     return std::unexpected<OrderRejected>({std::nullopt, RejectReason::InvalidMessage});
+}
+
+std::string TextCodec::encode(const OutboundMessage& message) {
+    return std::visit(
+        Overloaded{
+            [](const OrderAccepted& accepted) {
+                std::string output{"A "};
+
+                output += std::to_string(
+                    accepted.client_order_id
+                );
+
+                output += ' ';
+
+                output += std::to_string(
+                    accepted.order_id
+                );
+
+                return output;
+            },
+
+            [](const OrderRejected& rejected) {
+                std::string output{"R "};
+
+                if (rejected.client_order_id) {
+                    output += std::to_string(
+                        *rejected.client_order_id
+                    );
+                }
+                else {
+                    output += '-';
+                }
+
+                output += ' ';
+                output.append(
+                    reject_reason_name(rejected.reason)
+                );
+
+                return output;
+            }
+        },
+        message
+    );
 }
 
 } // namespace sixchange::protocol

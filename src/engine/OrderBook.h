@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <optional>
 
 #include <sixchange/core/Commands.h>
@@ -19,7 +20,9 @@ class OrderBook {
 public:
     explicit OrderBook(SymbolId symbol_id);
 
-    void add(const NewOrderCommand& command, const OrderId& order_id) noexcept;
+    using AddResult = std::expected<void, RejectReason>;
+
+    AddResult add(const NewOrderCommand& command, const OrderId& order_id) noexcept;
 
     [[nodiscard]] const PriceLevel& bid_level(const Price price) const noexcept {
         return bids_[price_index(price)];

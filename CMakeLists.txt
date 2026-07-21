@@ -128,6 +128,27 @@ target_link_libraries(sixchange_engine
 
 sixchange_enable_warnings(sixchange_engine)
 
+add_executable(sixchange_cli
+        apps/sixchange_cli.cpp
+)
+
+target_compile_features(sixchange_cli
+        PRIVATE
+        cxx_std_23
+)
+
+set_target_properties(sixchange_cli PROPERTIES
+        CXX_EXTENSIONS OFF
+        OUTPUT_NAME sixchange
+)
+
+target_link_libraries(sixchange_cli
+        PRIVATE
+        sixchange_engine
+)
+
+sixchange_enable_warnings(sixchange_cli)
+
 include(CTest)
 
 if(BUILD_TESTING)

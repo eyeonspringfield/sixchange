@@ -14,9 +14,9 @@ public:
 
     using DecodeResult = std::expected<InboundMessage, OrderRejected>;
 
-    [[nodiscard]] DecodeResult decode(std::string_view message) const noexcept;
+    [[nodiscard]] static DecodeResult decode(std::string_view message) noexcept;
 
-    [[nodiscard]] std::string encode(const OutboundMessage& message) const;
+    [[nodiscard]] static std::string encode(const OutboundMessage& message);
 };
 
 } // namespace sixchange::protocol

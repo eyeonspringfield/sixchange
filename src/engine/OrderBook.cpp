@@ -13,23 +13,22 @@ OrderBook::OrderBook(const SymbolId symbol_id) : symbol_id_(symbol_id) {
     }
 }
 
-void OrderBook::add(const NewOrderCommand& command, const OrderId& order_id) noexcept {
+OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderId& order_id) noexcept {
     if (command.symbol_id != symbol_id_) {
-        // events.push(reject_event(command, RejectReason::UnknownSymbol));
-        return;
+        return std::unexpected{RejectReason::UnknownSymbol};
     }
 
     if (command.quantity <= 0) {
-        // events.push(reject_event(command, RejectReason::InvalidQuantity));
-        return;
+        return std::unexpected{RejectReason::InvalidQuantity};
     }
 
-    //TODO: Duplicate CO id
+    if (command.price >= OrderBookMaxPriceTicks) {
+        return std::unexpected{RejectReason::InvalidPrice};
+    }
 
     Order* order = orders_.allocate();
     if (order == nullptr) {
-        // capacity exhausted, maybe I should let it core :P
-        return;
+        return std::unexpected{RejectReason::CapacityExhausted};
     }
 
     order->order_id = order_id;
@@ -43,6 +42,8 @@ void OrderBook::add(const NewOrderCommand& command, const OrderId& order_id) noe
     order->active = true;
 
     rest(order);
+
+    return {};
 }
 
 void OrderBook::rest(Order* order) noexcept {

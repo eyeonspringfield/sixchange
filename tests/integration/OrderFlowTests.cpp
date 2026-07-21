@@ -25,8 +25,7 @@ protected:
 
     protocol::TextCodec codec_{};
     MatchingEngine engine_{SymbolId{0}};
-    Sequencer sequencer_{};
-    OrderGateway gateway_{engine_, sequencer_};
+    OrderGateway gateway_{engine_};
 };
 
 TEST_F(OrderFlowIntegrationTests, DecodesAcceptsAndRestsBuyOrder) {

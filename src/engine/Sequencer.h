@@ -4,16 +4,24 @@
 
 namespace sixchange {
 
-class Sequencer {
+class Sequencer final {
 public:
-    explicit Sequencer(
-        SequenceNumber first_sequence = SequenceNumber{1}
-    ) noexcept;
+    [[nodiscard]]
+    static Sequencer& instance() noexcept;
 
-    [[nodiscard]] SequenceNumber next() noexcept;
+    [[nodiscard]]
+    SequenceNumber next() noexcept;
+
+    Sequencer(const Sequencer&) = delete;
+    Sequencer& operator=(const Sequencer&) = delete;
+
+    Sequencer(Sequencer&&) = delete;
+    Sequencer& operator=(Sequencer&&) = delete;
 
 private:
-    SequenceNumber next_sequence_;
+    Sequencer() noexcept = default;
+
+    SequenceNumber next_sequence_{1};
 };
 
-} // namespace sixch
+} // namespace sixchange

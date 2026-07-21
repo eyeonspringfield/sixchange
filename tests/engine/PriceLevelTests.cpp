@@ -5,7 +5,7 @@
 namespace sixchange {
 
 TEST(PriceLevelTest, IsEmptyByDefault) {
-    const PriceLevel level{};
+    constexpr PriceLevel level{};
 
     EXPECT_TRUE(level.empty());
     EXPECT_EQ(level.head, nullptr);

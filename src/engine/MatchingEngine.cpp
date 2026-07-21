@@ -12,14 +12,24 @@ MatchingEngine::MatchingEngine(MatchingEngine&&) noexcept = default;
 
 MatchingEngine& MatchingEngine::operator=(MatchingEngine&&) noexcept = default;
 
-void MatchingEngine::process(const EngineCommand& command) noexcept {
+MatchingEngine::ProcessResult MatchingEngine::process(const EngineCommand& command) noexcept {
     switch (command.type) {
     case CommandType::NewOrder:
-        order_book_->add(command.new_order, next_order_id_++);
-        break;
+        {
+            const OrderId order_id = next_order_id_;
+
+            const auto result = order_book_->add(command.new_order, order_id);
+
+            if (!result) {
+                return std::unexpected{result.error()};
+            }
+
+            ++next_order_id_;
+            return order_id;
+        }
 
     default:
-        break;
+        return std::unexpected{RejectReason::MatchingEngineError};
     }
 }
 

@@ -40,8 +40,7 @@ protected:
     }
 
     MatchingEngine engine_{SymbolId{0}};
-    Sequencer sequencer_{};
-    OrderGateway gateway_{engine_, sequencer_};
+    OrderGateway gateway_{engine_};
 };
 
 TEST_F(OrderGatewayTests, AcceptsValidAaplOrder) {
@@ -267,7 +266,7 @@ TEST_F(OrderGatewayTests, AssignsIncreasingSequenceNumbers) {
 
 TEST_F(OrderGatewayTests, UsesSequenceNumberFromSharedSequencer) {
     EXPECT_EQ(
-        sequencer_.next(),
+        Sequencer::instance().next(),
         SequenceNumber{1}
     );
 

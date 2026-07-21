@@ -11,6 +11,8 @@ namespace sixchange {
 
 class MatchingEngine {
 public:
+    using ProcessResult = std::expected<OrderId, RejectReason>;
+
     explicit MatchingEngine(SymbolId symbol_id);
     ~MatchingEngine();
 
@@ -20,7 +22,7 @@ public:
     MatchingEngine(MatchingEngine&&) noexcept;
     MatchingEngine& operator=(MatchingEngine&&) noexcept;
 
-    void process(const EngineCommand& command) noexcept;
+    [[nodiscard]] ProcessResult process(const EngineCommand& command) noexcept;
 
     [[nodiscard]] const OrderBook& order_book() const noexcept {
         return *order_book_;
