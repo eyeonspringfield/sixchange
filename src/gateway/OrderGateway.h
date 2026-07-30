@@ -20,6 +20,8 @@ public:
 private:
     [[nodiscard]] protocol::OutboundMessage handle_new_order(const protocol::NewOrderRequest& request);
 
+    [[nodiscard]] protocol::OutboundMessage handle_cancel_order(const protocol::CancelOrderRequest& request);
+
     [[nodiscard]] static std::optional<SymbolId> resolve_symbol(std::string_view symbol) noexcept;
 
     MatchingEngine& engine_;

@@ -1,35 +1,53 @@
 #pragma once
 
-#include <array>
+#include <cassert>
 #include <cstddef>
 #include <expected>
+#include <memory>
 #include <optional>
 
 #include <sixchange/core/Commands.h>
+#include <sixchange/config/OrderBookConfig.h>
 
+#include "FixedOrderMap.h"
 #include "OrderPool.h"
 #include "PriceLevel.h"
 
 namespace sixchange {
 
-inline constexpr std::size_t OrderBookMaxOrders = 100'000;
-inline constexpr std::size_t OrderBookMaxPriceTicks = 100'000;
-inline constexpr std::size_t OrderBookMaxEventsPerCommand = 128;
-
 class OrderBook {
 public:
-    explicit OrderBook(SymbolId symbol_id);
+    explicit OrderBook(SymbolId symbol_id, const OrderBookConfig& config = DefaultOrderBookConfig);
 
     using AddResult = std::expected<void, RejectReason>;
+    using CancelResult = std::expected<void, RejectReason>;
 
     AddResult add(const NewOrderCommand& command, const OrderId& order_id) noexcept;
 
+    CancelResult cancel(const CancelOrderCommand& command) noexcept;
+
     [[nodiscard]] const PriceLevel& bid_level(const Price price) const noexcept {
+        assert(price < config_.price_level_count);
         return bids_[price_index(price)];
     }
 
     [[nodiscard]] const PriceLevel& ask_level(const Price price) const noexcept {
+        assert(price < config_.price_level_count);
         return asks_[price_index(price)];
+    }
+
+    [[nodiscard]] std::optional<Price> best_bid() const noexcept {
+        if (!best_bid_) {
+            return std::nullopt;
+        }
+        return *best_bid_;
+    }
+
+    [[nodiscard]] std::optional<Price> best_ask() const noexcept {
+        if (!best_ask_) {
+            return std::nullopt;
+        }
+        return *best_ask_;
     }
 
 private:
@@ -37,19 +55,28 @@ private:
         return static_cast<std::size_t>(price);
     }
 
+    void rest(Order* order) noexcept;
+
+    void update_best_bid_after_removal(std::size_t removed_index) noexcept;
+
+    void update_best_ask_after_removal(std::size_t removed_index) noexcept;
+
     SymbolId symbol_id_{};
 
-    OrderPool<OrderBookMaxOrders> orders_{};
+    OrderBookConfig config_{};
 
-    std::array<PriceLevel, OrderBookMaxPriceTicks> bids_{};
-    std::array<PriceLevel, OrderBookMaxPriceTicks> asks_{};
+    OrderPool orders_;
+
+    FixedOrderMap<OrderId, Order*> orders_by_id_;
+
+    std::unique_ptr<PriceLevel[]> bids_{};
+    std::unique_ptr<PriceLevel[]> asks_{};
 
     std::optional<std::size_t> best_bid_{};
     std::optional<std::size_t> best_ask_{};
 
     //TODO: MATCHING
 
-    void rest(Order* order) noexcept;
 };
 
 } // namespace sixchange

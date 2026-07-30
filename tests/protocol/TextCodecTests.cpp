@@ -614,5 +614,155 @@ TEST(TextCodecTests, AcceptsMaximumQuantity) {
     );
 }
 
+TEST(TextCodecTests, DecodesValidCancelOrder)
+{
+    const auto result =
+        TextCodec::decode("C 1001 AAPL");
+
+    ASSERT_TRUE(result.has_value());
+
+    const auto* request =
+        std::get_if<CancelOrderRequest>(
+            &*result
+        );
+
+    ASSERT_NE(request, nullptr);
+
+    EXPECT_EQ(
+        request->client_order_id,
+        ClientOrderId{1001}
+    );
+    EXPECT_EQ(request->symbol, "AAPL");
+}
+
+TEST(
+    TextCodecTests,
+    RejectsCancelWithoutClientOrderId)
+{
+    expect_invalid_message("C");
+}
+
+TEST(
+    TextCodecTests,
+    RejectsCancelWithZeroClientOrderId)
+{
+    expect_invalid_message("C 0 AAPL");
+}
+
+TEST(
+    TextCodecTests,
+    RejectsCancelWithInvalidClientOrderId)
+{
+    expect_invalid_message("C abc AAPL");
+}
+
+TEST(TextCodecTests, RejectsCancelWithoutSymbol)
+{
+    const auto result =
+        TextCodec::decode("C 1001");
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error().client_order_id,
+        ClientOrderId{1001}
+    );
+    EXPECT_EQ(
+        result.error().reason,
+        RejectReason::InvalidMessage
+    );
+}
+
+TEST(
+    TextCodecTests,
+    RejectsCancelWithTrailingTokens)
+{
+    const auto result =
+        TextCodec::decode(
+            "C 1001 AAPL extra"
+        );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error().client_order_id,
+        ClientOrderId{1001}
+    );
+    EXPECT_EQ(
+        result.error().reason,
+        RejectReason::InvalidMessage
+    );
+}
+
+TEST(TextCodecTests, EncodesAcceptedOrder)
+{
+    const OutboundMessage message{
+        OrderAccepted{
+            .client_order_id =
+                ClientOrderId{1001},
+            .order_id = OrderId{42}
+        }
+    };
+
+    EXPECT_EQ(
+        TextCodec::encode(message),
+        "ACCEPTED 1001 42"
+    );
+}
+
+TEST(TextCodecTests, EncodesCancelledOrder)
+{
+    const OutboundMessage message{
+        OrderCancelled{
+            .client_order_id =
+                ClientOrderId{1001},
+            .order_id = OrderId{42}
+        }
+    };
+
+    EXPECT_EQ(
+        TextCodec::encode(message),
+        "CANCELLED 1001 42"
+    );
+}
+
+TEST(
+    TextCodecTests,
+    EncodesRejectedOrderWithClientOrderId)
+{
+    const OutboundMessage message{
+        OrderRejected{
+            .client_order_id =
+                ClientOrderId{1001},
+            .reason =
+                RejectReason::UnknownOrder
+        }
+    };
+
+    EXPECT_EQ(
+        TextCodec::encode(message),
+        "REJECTED 1001 UNKNOWN_ORDER"
+    );
+}
+
+TEST(
+    TextCodecTests,
+    EncodesRejectedOrderWithoutClientOrderId)
+{
+    const OutboundMessage message{
+        OrderRejected{
+            .client_order_id =
+                std::nullopt,
+            .reason =
+                RejectReason::InvalidMessage
+        }
+    };
+
+    EXPECT_EQ(
+        TextCodec::encode(message),
+        "REJECTED - INVALID_MESSAGE"
+    );
+}
+
 } // namespace
 } // namespace sixchange::protocol

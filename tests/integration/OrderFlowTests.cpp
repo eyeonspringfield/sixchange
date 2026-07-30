@@ -7,6 +7,7 @@
 #include "engine/Sequencer.h"
 #include "gateway/OrderGateway.h"
 #include "protocol/TextCodec.h"
+#include "TestConfig.h"
 
 namespace sixchange {
 namespace {
@@ -24,7 +25,7 @@ protected:
     }
 
     protocol::TextCodec codec_{};
-    MatchingEngine engine_{SymbolId{0}};
+    MatchingEngine engine_{SymbolId{0}, test::OrderBookConfig};
     OrderGateway gateway_{engine_};
 };
 
@@ -421,6 +422,100 @@ TEST_F(
     EXPECT_EQ(
         second_level.head->seq,
         SequenceNumber{2}
+    );
+}
+
+TEST_F(
+    OrderFlowIntegrationTests,
+    DecodesAndCancelsRestingOrder)
+{
+    const auto accepted_response =
+        submit_text(
+            "N 1001 AAPL B L GFD 125 20"
+        );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderAccepted
+        >(&accepted_response),
+        nullptr
+    );
+
+    const auto cancelled_response =
+        submit_text("C 1001 AAPL");
+
+    const auto* cancelled =
+        std::get_if<
+            protocol::OrderCancelled
+        >(&cancelled_response);
+
+    ASSERT_NE(cancelled, nullptr);
+
+    EXPECT_EQ(
+        cancelled->client_order_id,
+        ClientOrderId{1001}
+    );
+    EXPECT_EQ(
+        cancelled->order_id,
+        OrderId{1}
+    );
+
+    EXPECT_EQ(
+        codec_.encode(cancelled_response),
+        "CANCELLED 1001 1"
+    );
+
+    EXPECT_TRUE(
+        engine_.order_book()
+            .bid_level(Price{125})
+            .empty()
+    );
+}
+
+TEST_F(
+    OrderFlowIntegrationTests,
+    RejectsSecondTextCancellation)
+{
+    const auto accepted_response =
+        submit_text(
+            "N 1001 AAPL B L GFD 125 20"
+        );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderAccepted
+        >(&accepted_response),
+        nullptr
+    );
+
+    const auto cancelled_response =
+        submit_text("C 1001 AAPL");
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderCancelled
+        >(&cancelled_response),
+        nullptr
+    );
+
+    const auto response =
+        submit_text("C 1001 AAPL");
+
+    const auto* rejected =
+        std::get_if<
+            protocol::OrderRejected
+        >(&response);
+
+    ASSERT_NE(rejected, nullptr);
+
+    EXPECT_EQ(
+        rejected->reason,
+        RejectReason::UnknownOrder
+    );
+
+    EXPECT_EQ(
+        codec_.encode(response),
+        "REJECTED 1001 UNKNOWN_ORDER"
     );
 }
 

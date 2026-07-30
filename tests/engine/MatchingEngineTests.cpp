@@ -3,6 +3,7 @@
 #include <sixchange/core/Commands.h>
 
 #include "engine/MatchingEngine.h"
+#include "TestConfig.h"
 
 namespace sixchange {
 namespace {
@@ -30,10 +31,30 @@ namespace {
     };
 }
 
+[[nodiscard]]
+constexpr EngineCommand make_cancel_order(
+    const SymbolId symbol_id,
+    const SequenceNumber sequence_number,
+    const OrderId order_id,
+    const ClientOrderId client_order_id,
+    const ClientId client_id = ClientId{10})
+{
+    return EngineCommand{
+        .type = CommandType::CancelOrder,
+        .cancel_order = {
+            .seq = sequence_number,
+            .order_id = order_id,
+            .client_order_id = client_order_id,
+            .client_id = client_id,
+            .symbol_id = symbol_id
+        }
+    };
+}
+
 TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    MatchingEngine engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -76,7 +97,7 @@ TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
 TEST(MatchingEngineTests, ProcessesNewSellOrder) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    MatchingEngine engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -119,7 +140,7 @@ TEST(MatchingEngineTests, ProcessesNewSellOrder) {
 TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    MatchingEngine engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand first = make_new_order(
         symbol_id,
@@ -170,7 +191,7 @@ TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
 TEST(MatchingEngineTests, RejectsOrderForWrongSymbol) {
     constexpr SymbolId engine_symbol{1};
 
-    MatchingEngine engine{engine_symbol};
+    MatchingEngine engine{engine_symbol, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         SymbolId{2},
@@ -228,14 +249,14 @@ TEST(MatchingEngineTests, RejectsOrderWithZeroQuantity) {
 TEST(MatchingEngineTests, RejectsOrderWithOutOfRangePrice) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    MatchingEngine engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
         SequenceNumber{1},
         ClientOrderId{100},
         Side::Buy,
-        Price{OrderBookMaxPriceTicks},
+        Price{test::OrderBookConfig.price_level_count + 1},
         Quantity{10}
     );
 
@@ -315,6 +336,167 @@ TEST(MatchingEngineTests, PreservesCommandSequenceNumber) {
         level.front()->seq,
         SequenceNumber{42}
     );
+}
+
+TEST(
+    MatchingEngineTests,
+    ProcessesCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    MatchingEngine engine{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    const auto accepted = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        )
+    );
+
+    ASSERT_TRUE(accepted.has_value());
+    EXPECT_EQ(*accepted, OrderId{1});
+
+    const auto cancelled = engine.process(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100}
+        )
+    );
+
+    ASSERT_TRUE(cancelled.has_value());
+    EXPECT_EQ(*cancelled, OrderId{1});
+
+    EXPECT_TRUE(
+        engine.order_book()
+            .bid_level(Price{100})
+            .empty()
+    );
+}
+
+TEST(
+    MatchingEngineTests,
+    PropagatesUnknownOrderCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    MatchingEngine engine{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    const auto result = engine.process(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{1},
+            OrderId{999},
+            ClientOrderId{100}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::UnknownOrder
+    );
+}
+
+TEST(
+    MatchingEngineTests,
+    PropagatesCancellationOwnershipFailure)
+{
+    constexpr SymbolId symbol_id{1};
+
+    MatchingEngine engine{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        )
+    ).has_value());
+
+    const auto result = engine.process(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100},
+            ClientId{11}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::NotOrderOwner
+    );
+}
+
+TEST(
+    MatchingEngineTests,
+    CancellationDoesNotConsumeOrderId)
+{
+    constexpr SymbolId symbol_id{1};
+
+    MatchingEngine engine{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    const auto first = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        )
+    );
+
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(*first, OrderId{1});
+
+    ASSERT_TRUE(engine.process(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100}
+        )
+    ).has_value());
+
+    const auto second = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{3},
+            ClientOrderId{101},
+            Side::Buy,
+            Price{101},
+            Quantity{10}
+        )
+    );
+
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*second, OrderId{2});
 }
 
 } // namespace

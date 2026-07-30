@@ -23,6 +23,7 @@ struct NewOrderCommand {
 struct CancelOrderCommand {
     SequenceNumber seq;
 
+    OrderId order_id;
     ClientOrderId client_order_id;
     ClientId client_id;
     SymbolId symbol_id;

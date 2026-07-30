@@ -170,6 +170,12 @@ if(BUILD_TESTING)
             tests/protocol/TextCodecTests.cpp
             tests/gateway/OrderGatewayTests.cpp
             tests/integration/OrderFlowTests.cpp
+            tests/engine/FixedOrderMapTests.cpp
+    )
+
+    target_include_directories(sixchange_tests
+            PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
 
     target_compile_features(sixchange_tests

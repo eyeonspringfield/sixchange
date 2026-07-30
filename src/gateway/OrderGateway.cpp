@@ -15,6 +15,8 @@ protocol::OutboundMessage OrderGateway::handle(const protocol::InboundMessage& m
 
             if constexpr (std::same_as<Request, protocol::NewOrderRequest>) {
                 return handle_new_order(request);
+            } else if constexpr (std::same_as<Request, protocol::CancelOrderRequest>) {
+                return handle_cancel_order(request);
             }
 
             return protocol::OrderRejected{
@@ -86,6 +88,55 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
     return protocol::OrderAccepted{
         .client_order_id = request.client_order_id,
         .order_id = order_id
+    };
+}
+
+protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::CancelOrderRequest& request) {
+    const auto symbol_id = resolve_symbol(request.symbol);
+
+    if (!symbol_id) {
+        return protocol::OrderRejected{
+            .client_order_id = request.client_order_id,
+            .reason = RejectReason::UnknownSymbol
+        };
+    }
+
+    const auto iterator = client_orders_.find(request.client_order_id);
+
+    if (iterator == client_orders_.end()) {
+        return protocol::OrderRejected{
+            .client_order_id = request.client_order_id,
+            .reason = RejectReason::UnknownOrder
+        };
+    }
+
+    const SequenceNumber sequence_number = Sequencer::instance().next();
+
+    const CancelOrderCommand cancel{
+        .seq = sequence_number,
+        .order_id = iterator->second,
+        .client_order_id = request.client_order_id,
+        .client_id = client_id_,
+        .symbol_id = *symbol_id
+    };
+
+    const EngineCommand command{
+        .type = CommandType::CancelOrder,
+        .cancel_order = cancel
+    };
+
+    const auto result = engine_.process(command);
+
+    if (!result) {
+        return protocol::OrderRejected{
+            .client_order_id = request.client_order_id,
+            .reason = result.error()
+        };
+    }
+
+    return protocol::OrderCancelled{
+        .client_order_id = request.client_order_id,
+        .order_id = *result
     };
 }
 

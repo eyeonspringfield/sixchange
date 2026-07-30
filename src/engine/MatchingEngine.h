@@ -14,7 +14,7 @@ class MatchingEngine {
 public:
     using ProcessResult = std::expected<OrderId, RejectReason>;
 
-    explicit MatchingEngine(SymbolId symbol_id);
+    explicit MatchingEngine(SymbolId symbol_id, OrderBookConfig config = DefaultOrderBookConfig);
     ~MatchingEngine();
 
     MatchingEngine(const MatchingEngine&) = delete;
@@ -32,7 +32,7 @@ public:
 private:
     std::unique_ptr<OrderBook> order_book_;
     OrderId next_order_id_{1};
-    TradeId next_trade_id_{1};
+    [[maybe_unused]] TradeId next_trade_id_{1};
 };
 
 } // namespace sixchange

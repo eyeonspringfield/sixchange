@@ -5,6 +5,7 @@
 #include <variant>
 
 #include "gateway/OrderGateway.h"
+#include "TestConfig.h"
 
 namespace sixchange {
 namespace {
@@ -39,7 +40,26 @@ protected:
         );
     }
 
-    MatchingEngine engine_{SymbolId{0}};
+    [[nodiscard]]
+    static protocol::CancelOrderRequest
+    make_cancel_request(
+        const ClientOrderId client_order_id,
+        const std::string_view symbol = "AAPL") {
+        return protocol::CancelOrderRequest{
+            .client_order_id = client_order_id,
+            .symbol = symbol
+        };
+    }
+
+    [[nodiscard]]
+    protocol::OutboundMessage cancel(
+        const protocol::CancelOrderRequest& request) {
+        return gateway_.handle(
+            protocol::InboundMessage{request}
+        );
+    }
+
+    MatchingEngine engine_{SymbolId{0}, test::OrderBookConfig};
     OrderGateway gateway_{engine_};
 };
 
@@ -659,6 +679,222 @@ TEST_F(OrderGatewayTests, AcceptsDifferentClientOrderIds) {
         std::holds_alternative<
         protocol::OrderAccepted
         >(second)
+    );
+}
+
+TEST_F(
+    OrderGatewayTests,
+    CancelsAcceptedOrder)
+{
+    const auto accepted = submit(
+        make_request(
+            ClientOrderId{100},
+            "AAPL",
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        )
+    );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderAccepted
+        >(&accepted),
+        nullptr
+    );
+
+    const auto response = cancel(
+        make_cancel_request(
+            ClientOrderId{100}
+        )
+    );
+
+    const auto* cancelled =
+        std::get_if<
+            protocol::OrderCancelled
+        >(&response);
+
+    ASSERT_NE(cancelled, nullptr);
+
+    EXPECT_EQ(
+        cancelled->client_order_id,
+        ClientOrderId{100}
+    );
+    EXPECT_EQ(
+        cancelled->order_id,
+        OrderId{1}
+    );
+
+    EXPECT_TRUE(
+        engine_.order_book()
+            .bid_level(Price{100})
+            .empty()
+    );
+}
+
+TEST_F(
+    OrderGatewayTests,
+    RejectsUnknownClientOrderCancellation)
+{
+    const auto response = cancel(
+        make_cancel_request(
+            ClientOrderId{999}
+        )
+    );
+
+    const auto* rejected =
+        std::get_if<
+            protocol::OrderRejected
+        >(&response);
+
+    ASSERT_NE(rejected, nullptr);
+
+    EXPECT_EQ(
+        rejected->client_order_id,
+        ClientOrderId{999}
+    );
+    EXPECT_EQ(
+        rejected->reason,
+        RejectReason::UnknownOrder
+    );
+}
+
+TEST_F(
+    OrderGatewayTests,
+    RejectsCancellationForUnknownSymbol)
+{
+    const auto accepted = submit(
+        make_request(ClientOrderId{100})
+    );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderAccepted
+        >(&accepted),
+        nullptr
+    );
+
+    const auto response = cancel(
+        make_cancel_request(
+            ClientOrderId{100},
+            "MSFT"
+        )
+    );
+
+    const auto* rejected =
+        std::get_if<
+            protocol::OrderRejected
+        >(&response);
+
+    ASSERT_NE(rejected, nullptr);
+
+    EXPECT_EQ(
+        rejected->reason,
+        RejectReason::UnknownSymbol
+    );
+
+    EXPECT_FALSE(
+        engine_.order_book()
+            .bid_level(Price{100})
+            .empty()
+    );
+}
+
+TEST_F(
+    OrderGatewayTests,
+    RejectsSecondCancellation)
+{
+    const auto accepted = submit(
+        make_request(ClientOrderId{100})
+    );
+
+    ASSERT_NE(
+        std::get_if<protocol::OrderAccepted>(
+            &accepted
+        ),
+        nullptr
+    );
+
+    const auto first_cancel = cancel(
+        make_cancel_request(
+            ClientOrderId{100}
+        )
+    );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderCancelled
+        >(&first_cancel),
+        nullptr
+    );
+
+    const auto second_cancel = cancel(
+        make_cancel_request(
+            ClientOrderId{100}
+        )
+    );
+
+    const auto* rejected =
+        std::get_if<
+            protocol::OrderRejected
+        >(&second_cancel);
+
+    ASSERT_NE(rejected, nullptr);
+
+    EXPECT_EQ(
+        rejected->reason,
+        RejectReason::UnknownOrder
+    );
+}
+
+TEST_F(
+    OrderGatewayTests,
+    KeepsCancelledClientOrderIdReserved)
+{
+    const auto accepted = submit(
+        make_request(ClientOrderId{100})
+    );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderAccepted
+        >(&accepted),
+        nullptr
+    );
+
+    const auto cancelled = cancel(
+        make_cancel_request(
+            ClientOrderId{100}
+        )
+    );
+
+    ASSERT_NE(
+        std::get_if<
+            protocol::OrderCancelled
+        >(&cancelled),
+        nullptr
+    );
+
+    const auto reused = submit(
+        make_request(
+            ClientOrderId{100},
+            "AAPL",
+            Side::Buy,
+            Price{101}
+        )
+    );
+
+    const auto* rejected =
+        std::get_if<
+            protocol::OrderRejected
+        >(&reused);
+
+    ASSERT_NE(rejected, nullptr);
+
+    EXPECT_EQ(
+        rejected->reason,
+        RejectReason::
+            DuplicateClientOrderId
     );
 }
 

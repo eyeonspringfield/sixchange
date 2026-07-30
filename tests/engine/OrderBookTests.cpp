@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 #include <sixchange/core/Commands.h>
 
 #include "engine/OrderBook.h"
+#include "TestConfig.h"
 
 namespace sixchange {
 namespace {
@@ -29,10 +32,27 @@ constexpr NewOrderCommand make_new_order(
     };
 }
 
+[[nodiscard]]
+constexpr CancelOrderCommand make_cancel_order(
+    const SymbolId symbol_id,
+    const SequenceNumber sequence_number,
+    const OrderId order_id,
+    const ClientOrderId client_order_id,
+    const ClientId client_id)
+{
+    return CancelOrderCommand{
+        .seq = sequence_number,
+        .order_id = order_id,
+        .client_order_id = client_order_id,
+        .client_id = client_id,
+        .symbol_id = symbol_id
+    };
+}
+
 TEST(OrderBookTests, RestsBuyOrderAtCorrectPrice) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -83,7 +103,7 @@ TEST(OrderBookTests, RestsBuyOrderAtCorrectPrice) {
 TEST(OrderBookTests, RestsSellOrderAtCorrectPrice) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -134,7 +154,7 @@ TEST(OrderBookTests, RestsSellOrderAtCorrectPrice) {
 TEST(OrderBookTests, PreservesFifoWithinBidPriceLevel) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand first = make_new_order(
         symbol_id,
@@ -199,7 +219,7 @@ TEST(OrderBookTests, PreservesFifoWithinBidPriceLevel) {
 TEST(OrderBookTests, PreservesFifoWithinAskPriceLevel) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand first = make_new_order(
         symbol_id,
@@ -248,7 +268,7 @@ TEST(OrderBookTests, PreservesFifoWithinAskPriceLevel) {
 TEST(OrderBookTests, KeepsDifferentPricesInSeparateLevels) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand first = make_new_order(
         symbol_id,
@@ -311,7 +331,7 @@ TEST(OrderBookTests, KeepsDifferentPricesInSeparateLevels) {
 TEST(OrderBookTests, KeepsBidAndAskSidesSeparate) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand buy = make_new_order(
         symbol_id,
@@ -378,7 +398,7 @@ TEST(OrderBookTests, KeepsBidAndAskSidesSeparate) {
 TEST(OrderBookTests, RejectsOrderForDifferentSymbol) {
     constexpr SymbolId book_symbol{1};
 
-    OrderBook book{book_symbol};
+    OrderBook book{book_symbol, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         SymbolId{2},
@@ -411,7 +431,7 @@ TEST(OrderBookTests, RejectsOrderForDifferentSymbol) {
 TEST(OrderBookTests, RejectsBuyOrderWithZeroQuantity) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -444,7 +464,7 @@ TEST(OrderBookTests, RejectsBuyOrderWithZeroQuantity) {
 TEST(OrderBookTests, RejectsSellOrderWithZeroQuantity) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -477,7 +497,7 @@ TEST(OrderBookTests, RejectsSellOrderWithZeroQuantity) {
 TEST(OrderBookTests, RejectsPriceEqualToMaximumTickCount) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -485,7 +505,7 @@ TEST(OrderBookTests, RejectsPriceEqualToMaximumTickCount) {
         ClientOrderId{100},
         ClientId{10},
         Side::Buy,
-        Price{OrderBookMaxPriceTicks},
+        Price{test::OrderBookConfig.price_level_count},
         Quantity{50}
     );
 
@@ -504,7 +524,7 @@ TEST(OrderBookTests, RejectsPriceEqualToMaximumTickCount) {
 TEST(OrderBookTests, RejectsPriceAboveMaximumTickCount) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -512,7 +532,7 @@ TEST(OrderBookTests, RejectsPriceAboveMaximumTickCount) {
         ClientOrderId{100},
         ClientId{10},
         Side::Buy,
-        Price{OrderBookMaxPriceTicks + 1},
+        Price{test::OrderBookConfig.price_level_count + 1},
         Quantity{50}
     );
 
@@ -532,10 +552,10 @@ TEST(OrderBookTests, AcceptsHighestValidPrice) {
     constexpr SymbolId symbol_id{1};
 
     constexpr Price highest_valid_price{
-        OrderBookMaxPriceTicks - 1
+        test::OrderBookConfig.price_level_count - 1
     };
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand command = make_new_order(
         symbol_id,
@@ -567,7 +587,7 @@ TEST(OrderBookTests, AcceptsHighestValidPrice) {
 TEST(OrderBookTests, RejectedOrderDoesNotModifyExistingLevel) {
     constexpr SymbolId symbol_id{1};
 
-    OrderBook book{symbol_id};
+    OrderBook book{symbol_id, test::OrderBookConfig};
 
     constexpr NewOrderCommand accepted = make_new_order(
         symbol_id,
@@ -610,6 +630,633 @@ TEST(OrderBookTests, RejectedOrderDoesNotModifyExistingLevel) {
     EXPECT_EQ(level.head->order_id, OrderId{1});
     EXPECT_EQ(level.head->next, nullptr);
     EXPECT_EQ(level.total_quantity, Quantity{50});
+}
+
+TEST(
+    OrderBookTests,
+    UsesRuntimeConfiguredOrderCapacity)
+{
+    constexpr SymbolId symbol_id{1};
+
+    constexpr OrderBookConfig config{
+        .max_active_orders = 2,
+        .price_level_count = 128,
+        .order_lookup_capacity = 4
+    };
+
+    OrderBook book{symbol_id, config};
+
+    const auto first = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{1},
+            ClientId{10},
+            Side::Buy,
+            Price{10},
+            Quantity{1}
+        ),
+        OrderId{1}
+    );
+
+    const auto second = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{2},
+            ClientId{10},
+            Side::Buy,
+            Price{11},
+            Quantity{1}
+        ),
+        OrderId{2}
+    );
+
+    const auto third = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{3},
+            ClientOrderId{3},
+            ClientId{10},
+            Side::Buy,
+            Price{12},
+            Quantity{1}
+        ),
+        OrderId{3}
+    );
+
+    ASSERT_TRUE(first.has_value());
+    ASSERT_TRUE(second.has_value());
+    ASSERT_FALSE(third.has_value());
+
+    EXPECT_EQ(
+        third.error(),
+        RejectReason::CapacityExhausted
+    );
+}
+
+TEST(
+    OrderBookTests,
+    RollsBackPoolAllocationForDuplicateOrderId)
+{
+    constexpr SymbolId symbol_id{1};
+
+    constexpr OrderBookConfig config{
+        .max_active_orders = 2,
+        .price_level_count = 128,
+        .order_lookup_capacity = 4
+    };
+
+    OrderBook book{symbol_id, config};
+
+    ASSERT_TRUE(
+        book.add(
+            make_new_order(
+                symbol_id,
+                SequenceNumber{1},
+                ClientOrderId{100},
+                ClientId{10},
+                Side::Buy,
+                Price{100},
+                Quantity{10}
+            ),
+            OrderId{1}
+        ).has_value()
+    );
+
+    const auto duplicate = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{101},
+            ClientId{10},
+            Side::Buy,
+            Price{101},
+            Quantity{10}
+        ),
+        OrderId{1}
+    );
+
+    ASSERT_FALSE(duplicate.has_value());
+    EXPECT_EQ(
+        duplicate.error(),
+        RejectReason::MatchingEngineError
+    );
+
+    EXPECT_TRUE(
+        book.bid_level(Price{101}).empty()
+    );
+
+    const auto next = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{3},
+            ClientOrderId{102},
+            ClientId{10},
+            Side::Buy,
+            Price{102},
+            Quantity{10}
+        ),
+        OrderId{2}
+    );
+
+    EXPECT_TRUE(next.has_value());
+}
+
+TEST(
+    OrderBookTests,
+    CancelsOnlyBuyOrderAtLevel)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(
+        book.add(
+            make_new_order(
+                symbol_id,
+                SequenceNumber{1},
+                ClientOrderId{100},
+                ClientId{10},
+                Side::Buy,
+                Price{100},
+                Quantity{50}
+            ),
+            OrderId{1}
+        ).has_value()
+    );
+
+    const auto result = book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100},
+            ClientId{10}
+        )
+    );
+
+    ASSERT_TRUE(result.has_value());
+
+    const PriceLevel& level =
+        book.bid_level(Price{100});
+
+    EXPECT_TRUE(level.empty());
+    EXPECT_EQ(level.head, nullptr);
+    EXPECT_EQ(level.tail, nullptr);
+    EXPECT_EQ(
+        level.total_quantity,
+        Quantity{0}
+    );
+    EXPECT_EQ(book.best_bid(), std::nullopt);
+}
+
+TEST(
+    OrderBookTests,
+    CancelsOnlySellOrderAtLevel)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(
+        book.add(
+            make_new_order(
+                symbol_id,
+                SequenceNumber{1},
+                ClientOrderId{100},
+                ClientId{10},
+                Side::Sell,
+                Price{105},
+                Quantity{25}
+            ),
+            OrderId{1}
+        ).has_value()
+    );
+
+    ASSERT_TRUE(
+        book.cancel(
+            make_cancel_order(
+                symbol_id,
+                SequenceNumber{2},
+                OrderId{1},
+                ClientOrderId{100},
+                ClientId{10}
+            )
+        ).has_value()
+    );
+
+    const PriceLevel& level =
+        book.ask_level(Price{105});
+
+    EXPECT_TRUE(level.empty());
+    EXPECT_EQ(
+        level.total_quantity,
+        Quantity{0}
+    );
+    EXPECT_EQ(book.best_ask(), std::nullopt);
+}
+
+TEST(
+    OrderBookTests,
+    CancelsMiddleOrderWithoutBreakingLinks)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{101},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{20}
+        ),
+        OrderId{2}
+    ).has_value());
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{3},
+            ClientOrderId{102},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{30}
+        ),
+        OrderId{3}
+    ).has_value());
+
+    ASSERT_TRUE(book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{4},
+            OrderId{2},
+            ClientOrderId{101},
+            ClientId{10}
+        )
+    ).has_value());
+
+    const PriceLevel& level =
+        book.bid_level(Price{100});
+
+    ASSERT_NE(level.head, nullptr);
+    ASSERT_NE(level.tail, nullptr);
+
+    EXPECT_EQ(
+        level.head->order_id,
+        OrderId{1}
+    );
+    EXPECT_EQ(
+        level.tail->order_id,
+        OrderId{3}
+    );
+    EXPECT_EQ(level.head->next, level.tail);
+    EXPECT_EQ(level.tail->prev, level.head);
+    EXPECT_EQ(
+        level.total_quantity,
+        Quantity{40}
+    );
+}
+
+TEST(
+    OrderBookTests,
+    RejectsUnknownOrderCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    const auto result = book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{1},
+            OrderId{999},
+            ClientOrderId{100},
+            ClientId{10}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::UnknownOrder
+    );
+}
+
+TEST(
+    OrderBookTests,
+    RejectsCancellationByWrongOwner)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    const auto result = book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100},
+            ClientId{11}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::NotOrderOwner
+    );
+
+    EXPECT_FALSE(
+        book.bid_level(Price{100}).empty()
+    );
+}
+
+TEST(
+    OrderBookTests,
+    RejectsCancellationWithWrongClientOrderId)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    const auto result = book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{101},
+            ClientId{10}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::NotOrderOwner
+    );
+}
+
+TEST(
+    OrderBookTests,
+    RejectsCancellationForWrongSymbol)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    const auto result = book.cancel(
+        make_cancel_order(
+            SymbolId{2},
+            SequenceNumber{1},
+            OrderId{1},
+            ClientOrderId{100},
+            ClientId{10}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    EXPECT_EQ(
+        result.error(),
+        RejectReason::UnknownSymbol
+    );
+}
+
+TEST(
+    OrderBookTests,
+    UpdatesBestBidAfterCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{101},
+            ClientId{10},
+            Side::Buy,
+            Price{105},
+            Quantity{10}
+        ),
+        OrderId{2}
+    ).has_value());
+
+    ASSERT_EQ(book.best_bid(), Price{105});
+
+    ASSERT_TRUE(book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{3},
+            OrderId{2},
+            ClientOrderId{101},
+            ClientId{10}
+        )
+    ).has_value());
+
+    EXPECT_EQ(book.best_bid(), Price{100});
+}
+
+TEST(
+    OrderBookTests,
+    UpdatesBestAskAfterCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    OrderBook book{
+        symbol_id,
+        test::OrderBookConfig
+    };
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Sell,
+            Price{105},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{101},
+            ClientId{10},
+            Side::Sell,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{2}
+    ).has_value());
+
+    ASSERT_EQ(book.best_ask(), Price{100});
+
+    ASSERT_TRUE(book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{3},
+            OrderId{2},
+            ClientOrderId{101},
+            ClientId{10}
+        )
+    ).has_value());
+
+    EXPECT_EQ(book.best_ask(), Price{105});
+}
+
+TEST(
+    OrderBookTests,
+    ReusesPoolCapacityAfterCancellation)
+{
+    constexpr SymbolId symbol_id{1};
+
+    constexpr OrderBookConfig config{
+        .max_active_orders = 1,
+        .price_level_count = 128,
+        .order_lookup_capacity = 2
+    };
+
+    OrderBook book{symbol_id, config};
+
+    ASSERT_TRUE(book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{1},
+            ClientOrderId{100},
+            ClientId{10},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        ),
+        OrderId{1}
+    ).has_value());
+
+    ASSERT_TRUE(book.cancel(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100},
+            ClientId{10}
+        )
+    ).has_value());
+
+    const auto second = book.add(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{3},
+            ClientOrderId{101},
+            ClientId{10},
+            Side::Buy,
+            Price{101},
+            Quantity{20}
+        ),
+        OrderId{2}
+    );
+
+    ASSERT_TRUE(second.has_value());
+
+    ASSERT_NE(
+        book.bid_level(Price{101}).head,
+        nullptr
+    );
+
+    EXPECT_EQ(
+        book.bid_level(Price{101})
+            .head->order_id,
+        OrderId{2}
+    );
 }
 
 } // namespace
