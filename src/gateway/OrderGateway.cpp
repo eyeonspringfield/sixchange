@@ -3,6 +3,9 @@
 #include <type_traits>
 #include <variant>
 
+#include "logging/Log.h"
+#include "core/EnumNames.h"
+
 namespace sixchange {
 
 OrderGateway::OrderGateway(MatchingEngine& engine) noexcept : engine_{engine} {
@@ -38,6 +41,12 @@ std::optional<SymbolId> OrderGateway::resolve_symbol(const std::string_view symb
 
 protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrderRequest& request) {
     if (client_orders_.contains(request.client_order_id)) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected client_order_id={} reason={}",
+            request.client_order_id,
+            names::reject_reason(RejectReason::DuplicateClientOrderId)
+       );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = RejectReason::DuplicateClientOrderId
@@ -47,6 +56,13 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
     const auto symbol_id = resolve_symbol(request.symbol);
 
     if (!symbol_id) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected client_order_id={}, symbol={}, reason={}",
+            request.client_order_id,
+            request.symbol,
+            names::reject_reason(RejectReason::UnknownSymbol)
+        );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = RejectReason::UnknownSymbol
@@ -72,9 +88,23 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
         .new_order = new_order_command
     };
 
+    SIXCHANGE_LOG_TRACE(
+        "Submitting new order sequence={}, client_order_id={}, symbol_id={}",
+        sequence_number,
+        request.client_order_id,
+        *symbol_id
+    );
+
     const auto result = engine_.process(command);
 
     if (!result) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected by engine sequence={}, client_order_id={}, reason={}",
+            sequence_number,
+            request.client_order_id,
+            names::reject_reason(result.error())
+        );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = result.error()
@@ -84,6 +114,14 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
     const OrderId order_id = *result;
 
     client_orders_.emplace(request.client_order_id, order_id);
+
+    SIXCHANGE_LOG_DEBUG(
+        "New order accepted sequence={}, client_order_id={}, order_id={}, symbol_id={}",
+        sequence_number,
+        request.client_order_id,
+        order_id,
+        *symbol_id
+    );
 
     return protocol::OrderAccepted{
         .client_order_id = request.client_order_id,
@@ -95,6 +133,13 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
     const auto symbol_id = resolve_symbol(request.symbol);
 
     if (!symbol_id) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected client_order_id={}, symbol={}, reason={}",
+            request.client_order_id,
+            request.symbol,
+            names::reject_reason(RejectReason::UnknownSymbol)
+        );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = RejectReason::UnknownSymbol
@@ -104,6 +149,12 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
     const auto iterator = client_orders_.find(request.client_order_id);
 
     if (iterator == client_orders_.end()) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected client_order_id={} reason={}",
+            request.client_order_id,
+            names::reject_reason(RejectReason::UnknownOrder)
+        );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = RejectReason::UnknownOrder
@@ -125,14 +176,37 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
         .cancel_order = cancel
     };
 
+    SIXCHANGE_LOG_TRACE(
+        "Submitting cancel sequence={}, client_order_id={}, order_id={}, symbol_id={}",
+        sequence_number,
+        request.client_order_id,
+        iterator->second,
+        *symbol_id
+    );
+
     const auto result = engine_.process(command);
 
     if (!result) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected by engine sequence={}, client_order_id={}, order_id={}, reason={}",
+            sequence_number,
+            request.client_order_id,
+            iterator->second,
+            names::reject_reason(result.error())
+        );
+
         return protocol::OrderRejected{
             .client_order_id = request.client_order_id,
             .reason = result.error()
         };
     }
+
+    SIXCHANGE_LOG_DEBUG(
+        "Cancel accepted sequence={}, client_order_id={}, order_id={}",
+        sequence_number,
+        request.client_order_id,
+        *result
+    );
 
     return protocol::OrderCancelled{
         .client_order_id = request.client_order_id,

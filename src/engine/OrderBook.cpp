@@ -5,6 +5,9 @@
 #include <expected>
 #include <stdexcept>
 
+#include "logging/Log.h"
+#include "core/EnumNames.h"
+
 namespace sixchange {
 
 OrderBook::OrderBook(
@@ -31,19 +34,51 @@ OrderBook::OrderBook(
 
 OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderId& order_id) noexcept {
     if (command.symbol_id != symbol_id_) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected sequence={}, order_id={}, reason={}, command_symbol_id={}, book_symbol_id={}",
+            command.seq,
+            order_id,
+            names::reject_reason(RejectReason::UnknownSymbol),
+            command.symbol_id,
+            symbol_id_
+        );
+
         return std::unexpected{RejectReason::UnknownSymbol};
     }
 
     if (command.quantity == Quantity{0}) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected sequence={}, order_id={}, reason={}",
+            command.seq,
+            order_id,
+            names::reject_reason(RejectReason::InvalidQuantity)
+        );
+
         return std::unexpected{RejectReason::InvalidQuantity};
     }
 
     if (command.price >= config_.price_level_count) {
+        SIXCHANGE_LOG_DEBUG(
+            "New order rejected sequence={}, order_id={}, price={}, price_level_count={}, reason={}",
+            command.seq,
+            order_id,
+            command.price,
+            config_.price_level_count,
+            names::reject_reason(RejectReason::InvalidPrice)
+        );
+
         return std::unexpected{RejectReason::InvalidPrice};
     }
 
     Order* order = orders_.allocate();
     if (order == nullptr) {
+        SIXCHANGE_LOG_WARNING(
+            "Order pool exhausted sequence={}, order_id={}, capacity={}",
+            command.seq,
+            order_id,
+            orders_.capacity()
+        );
+
         return std::unexpected{RejectReason::CapacityExhausted};
     }
 
@@ -62,11 +97,24 @@ OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderI
         break;
 
     case FixedOrderMap<OrderId, Order*>::InsertResult::DuplicateKey:
+        SIXCHANGE_LOG_ERROR(
+            "Duplicate engine order ID sequence={}, order_id={}",
+            command.seq,
+            order_id
+        );
+
         orders_.release(order);
 
         return std::unexpected{RejectReason::MatchingEngineError};
 
     case FixedOrderMap<OrderId, Order*>::InsertResult::Full:
+        SIXCHANGE_LOG_WARNING(
+            "Order lookup map exhausted sequence={}, order_id={}, capacity={}",
+            command.seq,
+            order_id,
+            orders_by_id_.capacity()
+        );
+
         orders_.release(order);
 
         return std::unexpected{RejectReason::CapacityExhausted};
@@ -80,18 +128,40 @@ OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderI
 
 OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noexcept {
     if (command.symbol_id != symbol_id_) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected sequence={}, order_id={}, reason={}",
+            command.seq,
+            command.order_id,
+            names::reject_reason(RejectReason::UnknownSymbol)
+        );
+
         return std::unexpected{RejectReason::UnknownSymbol};
     }
 
     const std::optional<Order*> found = orders_by_id_.find(command.order_id);
 
     if (!found || *found == nullptr) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected sequence={}, order_id={}, reason={}",
+            command.seq,
+            command.order_id,
+            names::reject_reason(RejectReason::UnknownOrder)
+        );
+
         return std::unexpected{RejectReason::UnknownOrder};
     }
 
     const auto order = *found;
 
     if (order->client_id != command.client_id || order->client_order_id != command.client_order_id) {
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel rejected sequence={}, order_id={}, client_order_id={}, reason={}",
+            command.seq,
+            command.order_id,
+            command.client_order_id,
+            names::reject_reason(RejectReason::NotOrderOwner)
+        );
+
         return std::unexpected{RejectReason::NotOrderOwner};
     }
 
@@ -118,8 +188,24 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
     const bool erased = orders_by_id_.erase(command.order_id);
 
     if (!erased) {
-        return std::unexpected{RejectReason::None};
+        SIXCHANGE_LOG_CRITICAL(
+            "Order lookup erase failed after price-level removal sequence={}, order_id={}",
+            command.seq,
+            command.order_id
+        );
+
+        return std::unexpected{RejectReason::MatchingEngineError};
     }
+
+    SIXCHANGE_LOG_DEBUG(
+        "Order cancelled sequence={}, order_id={}, client_order_id={}, side={}, price={}, cancelled_quantity={}",
+        command.seq,
+        order->order_id,
+        order->client_order_id,
+        names::side(order->side),
+        order->price,
+        order->remaining_quantity
+    );
 
     orders_.release(order);
 
@@ -147,6 +233,16 @@ void OrderBook::rest(Order* order) noexcept {
             best_ask_ = index;
         }
     }
+
+    SIXCHANGE_LOG_DEBUG(
+        "Order rested sequence={}, order_id={}, client_order_id={}, side={}, price={}, remaining_quantity={}",
+        order->seq,
+        order->order_id,
+        order->client_order_id,
+        names::side(order->side),
+        order->price,
+        order->remaining_quantity
+    );
 }
 
 void OrderBook::update_best_bid_after_removal(const std::size_t removed_index) noexcept {

@@ -97,6 +97,7 @@ function(sixchange_enable_warnings target)
     endif()
 endfunction()
 
+find_package(Threads REQUIRED)
 
 add_library(sixchange_engine
         src/engine/OrderBook.cpp
@@ -104,6 +105,8 @@ add_library(sixchange_engine
         src/engine/Sequencer.cpp
         src/protocol/TextCodec.cpp
         src/gateway/OrderGateway.cpp
+        src/logging/Log.cpp
+        src/logging/AsyncFileLogger.cpp
 )
 
 target_compile_features(sixchange_engine
@@ -124,6 +127,7 @@ target_include_directories(sixchange_engine
 target_link_libraries(sixchange_engine
         PUBLIC
         sixchange_build_options
+        Threads::Threads
 )
 
 sixchange_enable_warnings(sixchange_engine)

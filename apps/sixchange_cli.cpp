@@ -5,9 +5,14 @@
 #include "engine/Sequencer.h"
 #include "gateway/OrderGateway.h"
 #include "protocol/TextCodec.h"
+#include "logging/Log.h"
+#include "logging/AsyncFileLogger.h"
 
 int main() {
     using namespace sixchange;
+
+    logging::AsyncFileLogger logger{"sixchange.log", logging::LogLevel::Debug};
+    logging::set_thread_logger(logger);
 
     MatchingEngine engine{SymbolId{0}};
     OrderGateway gateway{engine};
@@ -42,6 +47,8 @@ int main() {
 
         return 1;
     }
+
+    logging::clear_thread_logger();
 
     return 0;
 }
