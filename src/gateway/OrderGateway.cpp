@@ -40,6 +40,8 @@ std::optional<SymbolId> OrderGateway::resolve_symbol(const std::string_view symb
 }
 
 protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrderRequest& request) {
+    MatchingEngine::Events events;
+
     if (client_orders_.contains(request.client_order_id)) {
         SIXCHANGE_LOG_DEBUG(
             "New order rejected client_order_id={} reason={}",
@@ -95,7 +97,7 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
         *symbol_id
     );
 
-    const auto result = engine_.process(command);
+    const auto result = engine_.process(command, events);
 
     if (!result) {
         SIXCHANGE_LOG_DEBUG(
@@ -130,6 +132,8 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
 }
 
 protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::CancelOrderRequest& request) {
+    MatchingEngine::Events events;
+
     const auto symbol_id = resolve_symbol(request.symbol);
 
     if (!symbol_id) {
@@ -184,7 +188,7 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
         *symbol_id
     );
 
-    const auto result = engine_.process(command);
+    const auto result = engine_.process(command, events);
 
     if (!result) {
         SIXCHANGE_LOG_DEBUG(

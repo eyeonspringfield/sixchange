@@ -50,10 +50,19 @@ public:
         return *best_ask_;
     }
 
+    [[nodiscard]] std::uint64_t execution_count() const noexcept {
+        return execution_count_;
+    }
+
 private:
     [[nodiscard]] static constexpr std::size_t price_index(const Price price) noexcept {
         return static_cast<std::size_t>(price);
     }
+
+    void match(Order* aggressor) noexcept;
+
+    void match_buy(Order* aggressor) noexcept;
+    void match_sell(Order* aggressor) noexcept;
 
     void rest(Order* order) noexcept;
 
@@ -74,6 +83,11 @@ private:
 
     std::optional<std::size_t> best_bid_{};
     std::optional<std::size_t> best_ask_{};
+
+    std::size_t active_bid_orders_{0};
+    std::size_t active_ask_orders_{0};
+
+    std::uint64_t execution_count_{0};
 
     //TODO: MATCHING
 

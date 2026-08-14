@@ -120,8 +120,15 @@ OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderI
         return std::unexpected{RejectReason::CapacityExhausted};
     }
 
+    match(order);
 
-    rest(order);
+    if (order->remaining_quantity > 0) {
+        rest(order);
+    } else {
+        const bool erased = orders_by_id_.erase(order_id);
+        assert(erased);
+        orders_.release(order);
+    }
 
     return {};
 }
@@ -171,6 +178,7 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
         PriceLevel& level = bids_[index];
 
         level.remove(order);
+        --active_bid_orders_;
 
         if (best_bid_ && *best_bid_ == index && level.empty()) {
             update_best_bid_after_removal(index);
@@ -179,6 +187,7 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
         PriceLevel& level = asks_[index];
 
         level.remove(order);
+        --active_ask_orders_;
 
         if (best_ask_ && *best_ask_ == index && level.empty()) {
             update_best_ask_after_removal(index);
@@ -222,6 +231,7 @@ void OrderBook::rest(Order* order) noexcept {
     if (order->side == Side::Buy) {
         PriceLevel& level = bids_[index];
         level.push_back(order);
+        ++active_bid_orders_;
         if (!best_bid_ || index > *best_bid_) {
             best_bid_ = index;
         }
@@ -229,6 +239,7 @@ void OrderBook::rest(Order* order) noexcept {
     else {
         PriceLevel& level = asks_[index];
         level.push_back(order);
+        ++active_ask_orders_;
         if (!best_ask_ || index < *best_ask_) {
             best_ask_ = index;
         }
@@ -246,6 +257,11 @@ void OrderBook::rest(Order* order) noexcept {
 }
 
 void OrderBook::update_best_bid_after_removal(const std::size_t removed_index) noexcept {
+    if (active_bid_orders_ == 0) {
+        best_bid_.reset();
+        return;
+    }
+
     for (auto index{removed_index}; index > 0; --index) {
         if (auto candidate{index - 1}; !bids_[candidate].empty()) {
             best_bid_ = candidate;
@@ -256,6 +272,11 @@ void OrderBook::update_best_bid_after_removal(const std::size_t removed_index) n
 }
 
 void OrderBook::update_best_ask_after_removal(const std::size_t removed_index) noexcept {
+    if (active_ask_orders_ == 0) {
+        best_ask_.reset();
+        return;
+    }
+
     for (auto candidate{removed_index + 1}; candidate < config_.price_level_count; ++candidate) {
         if (!asks_[candidate].empty()) {
             best_ask_ = candidate;
@@ -264,6 +285,97 @@ void OrderBook::update_best_ask_after_removal(const std::size_t removed_index) n
     }
 
     best_ask_.reset();
+}
+
+void OrderBook::match(Order* aggressor) noexcept {
+    assert(aggressor != nullptr);
+
+    if (aggressor->side == Side::Buy) {
+        match_buy(aggressor);
+    } else {
+        match_sell(aggressor);
+    }
+}
+
+void OrderBook::match_buy(Order* aggressor) noexcept {
+    while (aggressor->remaining_quantity > 0 && best_ask_ && aggressor->price >= *best_ask_) {
+        const std::size_t level_index = *best_ask_;
+        PriceLevel& level = asks_[level_index];
+        Order* resting = level.front();
+
+        assert(resting != nullptr);
+        assert(resting->side == Side::Sell);
+
+        const Quantity executed_quantity = std::min(aggressor->remaining_quantity, resting->remaining_quantity);
+        ++execution_count_;
+        const Price execution_price = resting->price;
+
+        level.total_quantity -= executed_quantity;
+        aggressor->remaining_quantity -= executed_quantity;
+        resting->remaining_quantity -= executed_quantity;
+
+        SIXCHANGE_LOG_DEBUG(
+            "Trade executed aggressing_order_id={}, resting_order_id={}, price={}, quantity={}",
+            aggressor->order_id,
+            resting->order_id,
+            execution_price,
+            executed_quantity
+        );
+
+        if (resting->remaining_quantity == 0) {
+            level.remove(resting);
+            const bool erased = orders_by_id_.erase(resting->order_id);
+            assert(erased);
+
+            --active_ask_orders_;
+            orders_.release(resting);
+
+            if (level.empty()) {
+                update_best_ask_after_removal(level_index);
+            }
+        }
+    }
+}
+
+void OrderBook::match_sell(Order* aggressor) noexcept {
+    while (aggressor->remaining_quantity > 0 && best_bid_ && aggressor->price <= *best_bid_) {
+        const std::size_t level_index = *best_bid_;
+        PriceLevel& level = bids_[level_index];
+        Order* resting = level.front();
+
+        assert(resting != nullptr);
+        assert(resting->side == Side::Buy);
+
+        const Quantity executed_quantity = std::min(aggressor->remaining_quantity, resting->remaining_quantity);
+        ++execution_count_;
+        const Price execution_price = resting->price;
+
+        level.total_quantity -= executed_quantity;
+        aggressor->remaining_quantity -= executed_quantity;
+        resting->remaining_quantity -= executed_quantity;
+
+        SIXCHANGE_LOG_DEBUG(
+            "Trade executed aggressing_order_id={}, resting_order_id={}, price={}, quantity={}",
+            aggressor->order_id,
+            resting->order_id,
+            execution_price,
+            executed_quantity
+        );
+
+        if (resting->remaining_quantity == 0) {
+            level.remove(resting);
+
+            const bool erased = orders_by_id_.erase(resting->order_id);
+            assert(erased);
+
+            --active_bid_orders_;
+            orders_.release(resting);
+
+            if (level.empty()) {
+                update_best_bid_after_removal(level_index);
+            }
+        }
+    }
 }
 
 } // namespace sixchange

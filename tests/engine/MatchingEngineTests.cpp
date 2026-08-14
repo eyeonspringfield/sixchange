@@ -65,7 +65,9 @@ TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
         Quantity{50}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, OrderId{1});
@@ -108,7 +110,9 @@ TEST(MatchingEngineTests, ProcessesNewSellOrder) {
         Quantity{25}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, OrderId{1});
@@ -160,8 +164,10 @@ TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
         Quantity{20}
     );
 
-    const auto first_result = engine.process(first);
-    const auto second_result = engine.process(second);
+    MatchingEngine::Events events;
+
+    const auto first_result = engine.process(first, events);
+    const auto second_result = engine.process(second, events);
 
     ASSERT_TRUE(first_result.has_value());
     ASSERT_TRUE(second_result.has_value());
@@ -202,7 +208,9 @@ TEST(MatchingEngineTests, RejectsOrderForWrongSymbol) {
         Quantity{10}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -231,7 +239,9 @@ TEST(MatchingEngineTests, RejectsOrderWithZeroQuantity) {
         Quantity{0}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -260,7 +270,9 @@ TEST(MatchingEngineTests, RejectsOrderWithOutOfRangePrice) {
         Quantity{10}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -292,11 +304,13 @@ TEST(MatchingEngineTests, RejectedOrderDoesNotConsumeOrderId) {
         Quantity{10}
     );
 
+    MatchingEngine::Events events;
+
     const auto rejected_result =
-        engine.process(rejected);
+        engine.process(rejected, events);
 
     const auto accepted_result =
-        engine.process(accepted);
+        engine.process(accepted, events);
 
     ASSERT_FALSE(rejected_result.has_value());
     ASSERT_TRUE(accepted_result.has_value());
@@ -324,7 +338,9 @@ TEST(MatchingEngineTests, PreservesCommandSequenceNumber) {
         Quantity{10}
     );
 
-    const auto result = engine.process(command);
+    MatchingEngine::Events events;
+
+    const auto result = engine.process(command, events);
 
     ASSERT_TRUE(result.has_value());
 
@@ -349,6 +365,8 @@ TEST(
         test::OrderBookConfig
     };
 
+    MatchingEngine::Events events;
+
     const auto accepted = engine.process(
         make_new_order(
             symbol_id,
@@ -357,7 +375,8 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        )
+        ),
+        events
     );
 
     ASSERT_TRUE(accepted.has_value());
@@ -369,7 +388,8 @@ TEST(
             SequenceNumber{2},
             OrderId{1},
             ClientOrderId{100}
-        )
+        ),
+        events
     );
 
     ASSERT_TRUE(cancelled.has_value());
@@ -393,13 +413,16 @@ TEST(
         test::OrderBookConfig
     };
 
+    MatchingEngine::Events events;
+
     const auto result = engine.process(
         make_cancel_order(
             symbol_id,
             SequenceNumber{1},
             OrderId{999},
             ClientOrderId{100}
-        )
+        ),
+        events
     );
 
     ASSERT_FALSE(result.has_value());
@@ -421,6 +444,8 @@ TEST(
         test::OrderBookConfig
     };
 
+    MatchingEngine::Events events;
+
     ASSERT_TRUE(engine.process(
         make_new_order(
             symbol_id,
@@ -429,7 +454,8 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        )
+        ),
+        events
     ).has_value());
 
     const auto result = engine.process(
@@ -439,7 +465,8 @@ TEST(
             OrderId{1},
             ClientOrderId{100},
             ClientId{11}
-        )
+        ),
+        events
     );
 
     ASSERT_FALSE(result.has_value());
@@ -461,6 +488,8 @@ TEST(
         test::OrderBookConfig
     };
 
+    MatchingEngine::Events events;
+
     const auto first = engine.process(
         make_new_order(
             symbol_id,
@@ -469,7 +498,8 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        )
+        ),
+        events
     );
 
     ASSERT_TRUE(first.has_value());
@@ -481,7 +511,8 @@ TEST(
             SequenceNumber{2},
             OrderId{1},
             ClientOrderId{100}
-        )
+        ),
+        events
     ).has_value());
 
     const auto second = engine.process(
@@ -492,7 +523,8 @@ TEST(
             Side::Buy,
             Price{101},
             Quantity{10}
-        )
+        ),
+        events
     );
 
     ASSERT_TRUE(second.has_value());

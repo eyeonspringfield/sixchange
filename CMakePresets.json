@@ -62,6 +62,15 @@
       "cacheVariables": {
         "SIXCHANGE_ENABLE_NATIVE_OPTIMIZATIONS": true
       }
+    },
+    {
+      "name": "release-native-tests",
+      "displayName": "Release - Native + Tests",
+      "description": "Optimized native Release build with IPO/LTO and tests enabled",
+      "inherits": "release-native",
+      "cacheVariables": {
+        "BUILD_TESTING": true
+      }
     }
   ],
   "buildPresets": [
@@ -89,6 +98,14 @@
       "name": "tests-debug",
       "displayName": "Build Debug Tests",
       "configurePreset": "debug",
+      "targets": [
+        "sixchange_tests"
+      ]
+    },
+    {
+      "name": "tests-optimized",
+      "displayName": "Build Optimized Tests",
+      "configurePreset": "release-native-tests",
       "targets": [
         "sixchange_tests"
       ]
@@ -127,6 +144,17 @@
       "environment": {
         "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "release-native-tests",
+      "displayName": "Run Native Release Tests",
+      "configurePreset": "release-native-tests",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     }
   ],
@@ -234,6 +262,24 @@
         {
           "type": "test",
           "name": "asan-tests"
+        }
+      ]
+    },
+    {
+      "name": "run-release-native-tests",
+      "displayName": "Configure, Build, and Run Native Release Tests",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "release-native-tests"
+        },
+        {
+          "type": "build",
+          "name": "tests-optimized"
+        },
+        {
+          "type": "test",
+          "name": "release-native-tests"
         }
       ]
     }

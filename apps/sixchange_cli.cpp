@@ -11,7 +11,7 @@
 int main() {
     using namespace sixchange;
 
-    logging::AsyncFileLogger logger{"sixchange.log", logging::LogLevel::Debug};
+    logging::AsyncFileLogger logger{"sixchange.log", logging::LogLevel::Warning};
     logging::set_thread_logger(logger);
 
     MatchingEngine engine{SymbolId{0}};
@@ -47,6 +47,8 @@ int main() {
 
         return 1;
     }
+
+    std::cerr << "execution= " << engine.execution_count() << '\n';
 
     logging::clear_thread_logger();
 
