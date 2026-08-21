@@ -10,30 +10,49 @@
 #include <sixchange/config/OrderBookConfig.h>
 
 #include "FixedOrderMap.h"
+#include "MatchSink.h"
 #include "OrderPool.h"
 #include "PriceLevel.h"
 
 namespace sixchange {
 
+struct NewOrderOutcome {
+    Quantity remaining_quantity{};
+    bool rested{};
+};
+
+struct CancelledOrder {
+    OrderId order_id{};
+    ClientOrderId client_order_id{};
+    ClientId client_id{};
+    SymbolId symbol_id{};
+
+    Side side{};
+    Price price{};
+    Quantity cancelled_quantity{};
+};
+
 class OrderBook {
 public:
     explicit OrderBook(SymbolId symbol_id, const OrderBookConfig& config = DefaultOrderBookConfig);
 
-    using AddResult = std::expected<void, RejectReason>;
-    using CancelResult = std::expected<void, RejectReason>;
+    using AdmitResult = std::expected<Order*, RejectReason>;
+    using CancelResult = std::expected<CancelledOrder, RejectReason>;
 
-    AddResult add(const NewOrderCommand& command, const OrderId& order_id) noexcept;
+    [[nodiscard]] AdmitResult admit(const NewOrderCommand& command, OrderId order_id) noexcept;
+
+    [[nodiscard]] NewOrderOutcome execute(Order* aggressor, MatchSink match_sink) noexcept;
 
     CancelResult cancel(const CancelOrderCommand& command) noexcept;
 
     [[nodiscard]] const PriceLevel& bid_level(const Price price) const noexcept {
         assert(price < config_.price_level_count);
-        return bids_[price_index(price)];
+        return bids_[price];
     }
 
     [[nodiscard]] const PriceLevel& ask_level(const Price price) const noexcept {
         assert(price < config_.price_level_count);
-        return asks_[price_index(price)];
+        return asks_[price];
     }
 
     [[nodiscard]] std::optional<Price> best_bid() const noexcept {
@@ -55,14 +74,10 @@ public:
     }
 
 private:
-    [[nodiscard]] static constexpr std::size_t price_index(const Price price) noexcept {
-        return static_cast<std::size_t>(price);
-    }
+    void match(Order* aggressor, MatchSink match_sink) noexcept;
 
-    void match(Order* aggressor) noexcept;
-
-    void match_buy(Order* aggressor) noexcept;
-    void match_sell(Order* aggressor) noexcept;
+    void match_buy(Order* aggressor, MatchSink match_sink) noexcept;
+    void match_sell(Order* aggressor, MatchSink match_sink) noexcept;
 
     void rest(Order* order) noexcept;
 
@@ -71,11 +86,9 @@ private:
     void update_best_ask_after_removal(std::size_t removed_index) noexcept;
 
     SymbolId symbol_id_{};
-
     OrderBookConfig config_{};
 
     OrderPool orders_;
-
     FixedOrderMap<OrderId, Order*> orders_by_id_;
 
     std::unique_ptr<PriceLevel[]> bids_{};
@@ -88,9 +101,6 @@ private:
     std::size_t active_ask_orders_{0};
 
     std::uint64_t execution_count_{0};
-
-    //TODO: MATCHING
-
 };
 
 } // namespace sixchange

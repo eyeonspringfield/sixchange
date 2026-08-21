@@ -8,7 +8,7 @@ import sys
 class CommandGenerator:
     def __init__(self, symbol: str) -> None:
         self.symbol = symbol
-        self.next_client_order_id = 1
+        self.next_client_order_id = 1000
 
         self.order_count = 0
         self.cancel_count = 0

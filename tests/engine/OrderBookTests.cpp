@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <expected>
 
 #include <sixchange/core/Commands.h>
 
@@ -51,6 +52,26 @@ constexpr CancelOrderCommand make_cancel_order(
     };
 }
 
+struct IgnoreMatches {
+    void on_match(const MatchExecution&) noexcept {
+    }
+};
+
+[[nodiscard]]
+std::expected<NewOrderOutcome, RejectReason> submit_order(
+    OrderBook& book,
+    const NewOrderCommand& command,
+    const OrderId order_id) noexcept {
+    const auto admitted = book.admit(command, order_id);
+
+    if (!admitted) {
+        return std::unexpected{admitted.error()};
+    }
+
+    IgnoreMatches sink;
+    return book.execute(*admitted, MatchSink::from(sink));
+}
+
 TEST(OrderBookTests, RestsBuyOrderAtCorrectPrice) {
     constexpr SymbolId symbol_id{1};
 
@@ -66,7 +87,7 @@ TEST(OrderBookTests, RestsBuyOrderAtCorrectPrice) {
         Quantity{50}
     );
 
-    const auto result = book.add(command, OrderId{1});
+    const auto result = submit_order(book, command, OrderId{1});
 
     ASSERT_TRUE(result.has_value());
 
@@ -117,7 +138,7 @@ TEST(OrderBookTests, RestsSellOrderAtCorrectPrice) {
         Quantity{25}
     );
 
-    const auto result = book.add(command, OrderId{1});
+    const auto result = submit_order(book, command, OrderId{1});
 
     ASSERT_TRUE(result.has_value());
 
@@ -179,10 +200,10 @@ TEST(OrderBookTests, PreservesFifoWithinBidPriceLevel) {
     );
 
     const auto first_result =
-        book.add(first, OrderId{1});
+        submit_order(book, first, OrderId{1});
 
     const auto second_result =
-        book.add(second, OrderId{2});
+        submit_order(book, second, OrderId{2});
 
     ASSERT_TRUE(first_result.has_value());
     ASSERT_TRUE(second_result.has_value());
@@ -244,10 +265,10 @@ TEST(OrderBookTests, PreservesFifoWithinAskPriceLevel) {
     );
 
     const auto first_result =
-        book.add(first, OrderId{1});
+        submit_order(book, first, OrderId{1});
 
     const auto second_result =
-        book.add(second, OrderId{2});
+        submit_order(book, second, OrderId{2});
 
     ASSERT_TRUE(first_result.has_value());
     ASSERT_TRUE(second_result.has_value());
@@ -293,11 +314,11 @@ TEST(OrderBookTests, KeepsDifferentPricesInSeparateLevels) {
     );
 
     ASSERT_TRUE(
-        book.add(first, OrderId{1}).has_value()
+        submit_order(book, first, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(second, OrderId{2}).has_value()
+        submit_order(book, second, OrderId{2}).has_value()
     );
 
     const PriceLevel& first_level =
@@ -356,11 +377,11 @@ TEST(OrderBookTests, KeepsBidAndAskSidesSeparate) {
     );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{1}).has_value()
+        submit_order(book, buy, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{2}).has_value()
+        submit_order(book, sell, OrderId{2}).has_value()
     );
 
     const PriceLevel& bid_level =
@@ -418,7 +439,7 @@ TEST(OrderBookTests, RejectsOrderForDifferentSymbol) {
         Quantity{50}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -451,7 +472,7 @@ TEST(OrderBookTests, RejectsBuyOrderWithZeroQuantity) {
         Quantity{0}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -484,7 +505,7 @@ TEST(OrderBookTests, RejectsSellOrderWithZeroQuantity) {
         Quantity{0}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -517,7 +538,7 @@ TEST(OrderBookTests, RejectsPriceEqualToMaximumTickCount) {
         Quantity{50}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -544,7 +565,7 @@ TEST(OrderBookTests, RejectsPriceAboveMaximumTickCount) {
         Quantity{50}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -575,7 +596,7 @@ TEST(OrderBookTests, AcceptsHighestValidPrice) {
         Quantity{50}
     );
 
-    const auto result = book.add(
+    const auto result = submit_order(book,
         command,
         OrderId{1}
     );
@@ -618,11 +639,11 @@ TEST(OrderBookTests, RejectedOrderDoesNotModifyExistingLevel) {
     );
 
     ASSERT_TRUE(
-        book.add(accepted, OrderId{1}).has_value()
+        submit_order(book, accepted, OrderId{1}).has_value()
     );
 
     const auto rejected_result =
-        book.add(rejected, OrderId{2});
+        submit_order(book, rejected, OrderId{2});
 
     ASSERT_FALSE(rejected_result.has_value());
     EXPECT_EQ(
@@ -654,7 +675,7 @@ TEST(
 
     OrderBook book{symbol_id, config};
 
-    const auto first = book.add(
+    const auto first = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -667,7 +688,7 @@ TEST(
         OrderId{1}
     );
 
-    const auto second = book.add(
+    const auto second = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{2},
@@ -680,7 +701,7 @@ TEST(
         OrderId{2}
     );
 
-    const auto third = book.add(
+    const auto third = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{3},
@@ -718,7 +739,7 @@ TEST(
     OrderBook book{symbol_id, config};
 
     ASSERT_TRUE(
-        book.add(
+        submit_order(book,
             make_new_order(
                 symbol_id,
                 SequenceNumber{1},
@@ -732,7 +753,7 @@ TEST(
         ).has_value()
     );
 
-    const auto duplicate = book.add(
+    const auto duplicate = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{2},
@@ -755,7 +776,7 @@ TEST(
         book.bid_level(Price{101}).empty()
     );
 
-    const auto next = book.add(
+    const auto next = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{3},
@@ -783,7 +804,7 @@ TEST(
     };
 
     ASSERT_TRUE(
-        book.add(
+        submit_order(book,
             make_new_order(
                 symbol_id,
                 SequenceNumber{1},
@@ -834,7 +855,7 @@ TEST(
     };
 
     ASSERT_TRUE(
-        book.add(
+        submit_order(book,
             make_new_order(
                 symbol_id,
                 SequenceNumber{1},
@@ -882,7 +903,7 @@ TEST(
         test::OrderBookConfig
     };
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -895,7 +916,7 @@ TEST(
         OrderId{1}
     ).has_value());
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{2},
@@ -908,7 +929,7 @@ TEST(
         OrderId{2}
     ).has_value());
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{3},
@@ -993,7 +1014,7 @@ TEST(
         test::OrderBookConfig
     };
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -1039,7 +1060,7 @@ TEST(
         test::OrderBookConfig
     };
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -1110,7 +1131,7 @@ TEST(
         test::OrderBookConfig
     };
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -1123,7 +1144,7 @@ TEST(
         OrderId{1}
     ).has_value());
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{2},
@@ -1162,7 +1183,7 @@ TEST(
         test::OrderBookConfig
     };
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -1175,7 +1196,7 @@ TEST(
         OrderId{1}
     ).has_value());
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{2},
@@ -1217,7 +1238,7 @@ TEST(
 
     OrderBook book{symbol_id, config};
 
-    ASSERT_TRUE(book.add(
+    ASSERT_TRUE(submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{1},
@@ -1240,7 +1261,7 @@ TEST(
         )
     ).has_value());
 
-    const auto second = book.add(
+    const auto second = submit_order(book,
         make_new_order(
             symbol_id,
             SequenceNumber{3},
@@ -1292,8 +1313,8 @@ TEST(OrderBookTests, BuyBelowBestAskDoesNotMatch) {
         Quantity{30}
     );
 
-    ASSERT_TRUE(book.add(sell, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(buy, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{2}).has_value());
 
     const PriceLevel& ask =
         book.ask_level(Price{105});
@@ -1350,8 +1371,8 @@ TEST(OrderBookTests, BuyExactlyFillsSingleRestingAsk) {
         Quantity{50}
     );
 
-    ASSERT_TRUE(book.add(sell, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(buy, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{2}).has_value());
 
     EXPECT_TRUE(
         book.ask_level(Price{100}).empty()
@@ -1401,8 +1422,8 @@ TEST(OrderBookTests, BuyPartiallyFillsRestingAsk) {
         Quantity{30}
     );
 
-    ASSERT_TRUE(book.add(sell, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(buy, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{2}).has_value());
 
     const PriceLevel& ask =
         book.ask_level(Price{100});
@@ -1460,8 +1481,8 @@ TEST(OrderBookTests, BuyConsumesAskAndRestsRemainder) {
         Quantity{50}
     );
 
-    ASSERT_TRUE(book.add(sell, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(buy, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{2}).has_value());
 
     EXPECT_TRUE(
         book.ask_level(Price{100}).empty()
@@ -1533,15 +1554,15 @@ TEST(OrderBookTests, BuyMatchesAsksInFifoOrder) {
         );
 
     ASSERT_TRUE(
-        book.add(first_sell, OrderId{1}).has_value()
+        submit_order(book, first_sell, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(second_sell, OrderId{2}).has_value()
+        submit_order(book, second_sell, OrderId{2}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{3}).has_value()
+        submit_order(book, buy, OrderId{3}).has_value()
     );
 
     const PriceLevel& ask =
@@ -1613,15 +1634,15 @@ TEST(OrderBookTests, BuySweepsMultipleAskPriceLevels) {
         );
 
     ASSERT_TRUE(
-        book.add(sell_100, OrderId{1}).has_value()
+        submit_order(book, sell_100, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell_101, OrderId{2}).has_value()
+        submit_order(book, sell_101, OrderId{2}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell_102, OrderId{3}).has_value()
+        submit_order(book, sell_102, OrderId{3}).has_value()
     );
 
     ASSERT_TRUE(book.best_ask().has_value());
@@ -1639,7 +1660,7 @@ TEST(OrderBookTests, BuySweepsMultipleAskPriceLevels) {
         );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{4}).has_value()
+        submit_order(book, buy, OrderId{4}).has_value()
     );
 
     // 20 @ 100 fully consumed.
@@ -1719,11 +1740,11 @@ TEST(OrderBookTests, BuyStopsAtLimitPriceAndRestsRemainder) {
         );
 
     ASSERT_TRUE(
-        book.add(sell_100, OrderId{1}).has_value()
+        submit_order(book, sell_100, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell_102, OrderId{2}).has_value()
+        submit_order(book, sell_102, OrderId{2}).has_value()
     );
 
     constexpr NewOrderCommand buy =
@@ -1738,7 +1759,7 @@ TEST(OrderBookTests, BuyStopsAtLimitPriceAndRestsRemainder) {
         );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{3}).has_value()
+        submit_order(book, buy, OrderId{3}).has_value()
     );
 
     // Crosses 100.
@@ -1814,11 +1835,11 @@ TEST(OrderBookTests, FullyFilledRestingAskCannotBeCancelled) {
         );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{1}).has_value()
+        submit_order(book, sell, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{2}).has_value()
+        submit_order(book, buy, OrderId{2}).has_value()
     );
 
     const CancelOrderCommand cancel =
@@ -1866,8 +1887,8 @@ TEST(OrderBookTests, SellAboveBestBidDoesNotMatch) {
         Quantity{30}
     );
 
-    ASSERT_TRUE(book.add(buy, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(sell, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{2}).has_value());
 
     const PriceLevel& bid =
         book.bid_level(Price{100});
@@ -1924,8 +1945,8 @@ TEST(OrderBookTests, SellExactlyFillsSingleRestingBid) {
         Quantity{50}
     );
 
-    ASSERT_TRUE(book.add(buy, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(sell, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{2}).has_value());
 
     EXPECT_TRUE(
         book.bid_level(Price{100}).empty()
@@ -1975,8 +1996,8 @@ TEST(OrderBookTests, SellPartiallyFillsRestingBid) {
         Quantity{30}
     );
 
-    ASSERT_TRUE(book.add(buy, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(sell, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{2}).has_value());
 
     const PriceLevel& bid =
         book.bid_level(Price{100});
@@ -2034,8 +2055,8 @@ TEST(OrderBookTests, SellConsumesBidAndRestsRemainder) {
         Quantity{50}
     );
 
-    ASSERT_TRUE(book.add(buy, OrderId{1}).has_value());
-    ASSERT_TRUE(book.add(sell, OrderId{2}).has_value());
+    ASSERT_TRUE(submit_order(book, buy, OrderId{1}).has_value());
+    ASSERT_TRUE(submit_order(book, sell, OrderId{2}).has_value());
 
     EXPECT_TRUE(
         book.bid_level(Price{100}).empty()
@@ -2107,15 +2128,15 @@ TEST(OrderBookTests, SellMatchesBidsInFifoOrder) {
         );
 
     ASSERT_TRUE(
-        book.add(first_buy, OrderId{1}).has_value()
+        submit_order(book, first_buy, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(second_buy, OrderId{2}).has_value()
+        submit_order(book, second_buy, OrderId{2}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{3}).has_value()
+        submit_order(book, sell, OrderId{3}).has_value()
     );
 
     const PriceLevel& bid =
@@ -2187,15 +2208,15 @@ TEST(OrderBookTests, SellSweepsMultipleBidPriceLevels) {
         );
 
     ASSERT_TRUE(
-        book.add(buy_102, OrderId{1}).has_value()
+        submit_order(book, buy_102, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(buy_101, OrderId{2}).has_value()
+        submit_order(book, buy_101, OrderId{2}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(buy_100, OrderId{3}).has_value()
+        submit_order(book, buy_100, OrderId{3}).has_value()
     );
 
     ASSERT_TRUE(book.best_bid().has_value());
@@ -2213,7 +2234,7 @@ TEST(OrderBookTests, SellSweepsMultipleBidPriceLevels) {
         );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{4}).has_value()
+        submit_order(book, sell, OrderId{4}).has_value()
     );
 
     // 20 @ 102 consumed.
@@ -2283,11 +2304,11 @@ TEST(OrderBookTests, SellStopsAtLimitPriceAndRestsRemainder) {
         );
 
     ASSERT_TRUE(
-        book.add(buy_102, OrderId{1}).has_value()
+        submit_order(book, buy_102, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(buy_100, OrderId{2}).has_value()
+        submit_order(book, buy_100, OrderId{2}).has_value()
     );
 
     constexpr NewOrderCommand sell =
@@ -2302,7 +2323,7 @@ TEST(OrderBookTests, SellStopsAtLimitPriceAndRestsRemainder) {
         );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{3}).has_value()
+        submit_order(book, sell, OrderId{3}).has_value()
     );
 
     // Sell @ 101 crosses bid @ 102.
@@ -2378,11 +2399,11 @@ TEST(OrderBookTests, FullyFilledRestingBidCannotBeCancelled) {
         );
 
     ASSERT_TRUE(
-        book.add(buy, OrderId{1}).has_value()
+        submit_order(book, buy, OrderId{1}).has_value()
     );
 
     ASSERT_TRUE(
-        book.add(sell, OrderId{2}).has_value()
+        submit_order(book, sell, OrderId{2}).has_value()
     );
 
     const CancelOrderCommand cancel =
@@ -2416,7 +2437,7 @@ TEST(OrderBookBenchmarks, BuySideBookSweep) {
         .order_lookup_capacity = 1024
     };
 
-    constexpr std::size_t depth = 256;
+    constexpr std::size_t depth = 32;
     constexpr std::size_t iterations = 1'000'000;
 
     constexpr Price base_price{100};
@@ -2467,7 +2488,7 @@ TEST(OrderBookBenchmarks, BuySideBookSweep) {
                 );
 
             const auto result =
-                book.add(
+                submit_order(book,
                     sell,
                     order_id++
                 );
@@ -2512,7 +2533,7 @@ TEST(OrderBookBenchmarks, BuySideBookSweep) {
         const auto start = Clock::now();
 
         const auto result =
-            book.add(
+            submit_order(book,
                 buy,
                 order_id++
             );

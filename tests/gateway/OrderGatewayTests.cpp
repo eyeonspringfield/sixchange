@@ -4,8 +4,12 @@
 #include <string_view>
 #include <variant>
 
+#include <sixchange/core/EngineEventDispatcher.h>
+#include <sixchange/protocol/OutboundMessageSink.h>
+
 #include "gateway/OrderGateway.h"
 #include "TestConfig.h"
+#include "TestSinks.h"
 
 namespace sixchange {
 namespace {
@@ -32,12 +36,18 @@ protected:
         };
     }
 
+    void SetUp() override {
+        ASSERT_TRUE(
+            dispatcher_.add_sink(EngineEventSink::from(gateway_))
+        );
+    }
+
     [[nodiscard]]
     protocol::OutboundMessage submit(
         const protocol::NewOrderRequest& request) {
-        return gateway_.handle(
-            protocol::InboundMessage{request}
-        );
+        outbound_.clear();
+        gateway_.handle(protocol::InboundMessage{request});
+        return outbound_.take_single();
     }
 
     [[nodiscard]]
@@ -54,13 +64,22 @@ protected:
     [[nodiscard]]
     protocol::OutboundMessage cancel(
         const protocol::CancelOrderRequest& request) {
-        return gateway_.handle(
-            protocol::InboundMessage{request}
-        );
+        outbound_.clear();
+        gateway_.handle(protocol::InboundMessage{request});
+        return outbound_.take_single();
     }
 
-    MatchingEngine engine_{SymbolId{0}, test::OrderBookConfig};
-    OrderGateway gateway_{engine_};
+    EngineEventDispatcher<> dispatcher_{};
+    test::OutboundMessageCollector outbound_{};
+    MatchingEngine engine_{
+        SymbolId{0},
+        EngineEventSink::from(dispatcher_),
+        test::OrderBookConfig
+    };
+    OrderGateway gateway_{
+        engine_,
+        protocol::OutboundMessageSink::from(outbound_)
+    };
 };
 
 TEST_F(OrderGatewayTests, AcceptsValidAaplOrder) {

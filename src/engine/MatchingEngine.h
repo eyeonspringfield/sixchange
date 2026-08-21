@@ -4,7 +4,7 @@
 #include <expected>
 
 #include <sixchange/core/Commands.h>
-#include <sixchange/core/EventBuffer.h>
+#include <sixchange/core/EngineEventSink.h>
 
 #include "OrderBook.h"
 
@@ -12,13 +12,7 @@ namespace sixchange {
 
 class MatchingEngine {
 public:
-    static constexpr std::size_t MaximumEventsPerCommand{16};
-
-    using Events = EventBuffer<MaximumEventsPerCommand>;
-
-    using ProcessResult = std::expected<OrderId, RejectReason>;
-
-    explicit MatchingEngine(SymbolId symbol_id, OrderBookConfig config = DefaultOrderBookConfig);
+    MatchingEngine(SymbolId symbol_id, EngineEventSink event_sink, OrderBookConfig config = DefaultOrderBookConfig);
     ~MatchingEngine();
 
     MatchingEngine(const MatchingEngine&) = delete;
@@ -27,7 +21,7 @@ public:
     MatchingEngine(MatchingEngine&&) noexcept;
     MatchingEngine& operator=(MatchingEngine&&) noexcept;
 
-    [[nodiscard]] ProcessResult process(const EngineCommand& command, Events& events) noexcept;
+    void process(const EngineCommand& command) noexcept;
 
     [[nodiscard]] const OrderBook& order_book() const noexcept {
         return *order_book_;
@@ -37,17 +31,24 @@ public:
         return order_book_->execution_count();
     }
 
-private:
-    static void emit(Events& events, const EngineEvent& event) noexcept;
+    void on_match(const MatchExecution& match_execution) noexcept;
 
-    static void emit_rejection(Events& events,
-                                      SequenceNumber seq,
-                                      ClientOrderId client_order_id,
-                                      ClientId client_id,
-                                      SymbolId symbol_id,
-                                      RejectReason reason) noexcept;
+private:
+    void process_new_order(const NewOrderCommand& command) noexcept;
+
+    void process_cancel_order(const CancelOrderCommand& command) noexcept;
+
+    void emit_rejection(SequenceNumber seq,
+                        ClientOrderId client_order_id,
+                        ClientId client_id,
+                        SymbolId symbol_id,
+                        CommandType command_type,
+                        RejectReason reason) const noexcept;
+
+    EngineEventSink event_sink_;
 
     std::unique_ptr<OrderBook> order_book_;
+
     OrderId next_order_id_{1};
     [[maybe_unused]] TradeId next_trade_id_{1};
 };

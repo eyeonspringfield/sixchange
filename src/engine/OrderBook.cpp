@@ -32,7 +32,7 @@ OrderBook::OrderBook(
     }
 }
 
-OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderId& order_id) noexcept {
+OrderBook::AdmitResult OrderBook::admit(const NewOrderCommand& command, OrderId order_id) noexcept {
     if (command.symbol_id != symbol_id_) {
         SIXCHANGE_LOG_DEBUG(
             "New order rejected sequence={}, order_id={}, reason={}, command_symbol_id={}, book_symbol_id={}",
@@ -120,17 +120,39 @@ OrderBook::AddResult OrderBook::add(const NewOrderCommand& command, const OrderI
         return std::unexpected{RejectReason::CapacityExhausted};
     }
 
-    match(order);
+    return order;
+}
 
-    if (order->remaining_quantity > 0) {
-        rest(order);
-    } else {
-        const bool erased = orders_by_id_.erase(order_id);
-        assert(erased);
-        orders_.release(order);
+NewOrderOutcome OrderBook::execute(Order* aggressor, const MatchSink match_sink) noexcept {
+    assert(aggressor != nullptr);
+    assert(aggressor->active);
+
+    match(aggressor, match_sink);
+
+    if (const Quantity remaining = aggressor->remaining_quantity; remaining > Quantity{0}) {
+        rest(aggressor);
+
+        return NewOrderOutcome{
+            .remaining_quantity = remaining,
+            .rested = true
+        };
     }
 
-    return {};
+    if (const bool erased = orders_by_id_.erase(aggressor->order_id); !erased) {
+        SIXCHANGE_LOG_CRITICAL(
+            "Aggressing order lookup erase failed after full fill order_id={}",
+            aggressor->order_id
+        );
+
+        assert(false);
+    }
+
+    orders_.release(aggressor);
+
+    return NewOrderOutcome{
+        .remaining_quantity = Quantity{0},
+        .rested = false
+    };
 }
 
 OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noexcept {
@@ -172,7 +194,7 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
         return std::unexpected{RejectReason::NotOrderOwner};
     }
 
-    const std::size_t index = price_index(order->price);
+    const std::size_t index = order->price;
 
     if (order->side == Side::Buy) {
         PriceLevel& level = bids_[index];
@@ -194,9 +216,7 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
         }
     }
 
-    const bool erased = orders_by_id_.erase(command.order_id);
-
-    if (!erased) {
+    if (const bool erased = orders_by_id_.erase(command.order_id); !erased) {
         SIXCHANGE_LOG_CRITICAL(
             "Order lookup erase failed after price-level removal sequence={}, order_id={}",
             command.seq,
@@ -205,6 +225,16 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
 
         return std::unexpected{RejectReason::MatchingEngineError};
     }
+
+    const CancelledOrder cancelled{
+        .order_id = order->order_id,
+        .client_order_id = order->client_order_id,
+        .client_id = order->client_id,
+        .symbol_id = order->symbol_id,
+        .side = order->side,
+        .price = order->price,
+        .cancelled_quantity = order->remaining_quantity
+    };
 
     SIXCHANGE_LOG_DEBUG(
         "Order cancelled sequence={}, order_id={}, client_order_id={}, side={}, price={}, cancelled_quantity={}",
@@ -218,7 +248,7 @@ OrderBook::CancelResult OrderBook::cancel(const CancelOrderCommand& command) noe
 
     orders_.release(order);
 
-    return {};
+    return cancelled;
 }
 
 void OrderBook::rest(Order* order) noexcept {
@@ -226,7 +256,7 @@ void OrderBook::rest(Order* order) noexcept {
     assert(order->remaining_quantity > 0);
     assert(order->symbol_id == symbol_id_);
 
-    const std::size_t index = price_index(order->price);
+    const std::size_t index = order->price;
 
     if (order->side == Side::Buy) {
         PriceLevel& level = bids_[index];
@@ -287,17 +317,17 @@ void OrderBook::update_best_ask_after_removal(const std::size_t removed_index) n
     best_ask_.reset();
 }
 
-void OrderBook::match(Order* aggressor) noexcept {
+void OrderBook::match(Order* aggressor, const MatchSink match_sink) noexcept {
     assert(aggressor != nullptr);
 
     if (aggressor->side == Side::Buy) {
-        match_buy(aggressor);
+        match_buy(aggressor, match_sink);
     } else {
-        match_sell(aggressor);
+        match_sell(aggressor, match_sink);
     }
 }
 
-void OrderBook::match_buy(Order* aggressor) noexcept {
+void OrderBook::match_buy(Order* aggressor, const MatchSink match_sink) noexcept {
     while (aggressor->remaining_quantity > 0 && best_ask_ && aggressor->price >= *best_ask_) {
         const std::size_t level_index = *best_ask_;
         PriceLevel& level = asks_[level_index];
@@ -322,9 +352,27 @@ void OrderBook::match_buy(Order* aggressor) noexcept {
             executed_quantity
         );
 
+        match_sink.emit(
+           MatchExecution{
+               .seq = aggressor->seq,
+               .symbol_id = aggressor->symbol_id,
+               .aggressing_side = aggressor->side,
+               .price = execution_price,
+               .quantity = executed_quantity,
+               .aggressing_order_id = aggressor->order_id,
+               .aggressing_client_order_id = aggressor->client_order_id,
+               .aggressing_client_id = aggressor->client_id,
+               .aggressing_remaining_quantity = aggressor->remaining_quantity,
+               .resting_order_id = resting->order_id,
+               .resting_client_order_id = resting->client_order_id,
+               .resting_client_id = resting->client_id,
+               .resting_remaining_quantity = resting->remaining_quantity
+           }
+       );
+
         if (resting->remaining_quantity == 0) {
             level.remove(resting);
-            const bool erased = orders_by_id_.erase(resting->order_id);
+            const bool erased [[maybe_unused]] = orders_by_id_.erase(resting->order_id);
             assert(erased);
 
             --active_ask_orders_;
@@ -337,7 +385,7 @@ void OrderBook::match_buy(Order* aggressor) noexcept {
     }
 }
 
-void OrderBook::match_sell(Order* aggressor) noexcept {
+void OrderBook::match_sell(Order* aggressor, const MatchSink match_sink) noexcept {
     while (aggressor->remaining_quantity > 0 && best_bid_ && aggressor->price <= *best_bid_) {
         const std::size_t level_index = *best_bid_;
         PriceLevel& level = bids_[level_index];
@@ -362,10 +410,28 @@ void OrderBook::match_sell(Order* aggressor) noexcept {
             executed_quantity
         );
 
+        match_sink.emit(
+           MatchExecution{
+               .seq = aggressor->seq,
+               .symbol_id = aggressor->symbol_id,
+               .aggressing_side = aggressor->side,
+               .price = execution_price,
+               .quantity = executed_quantity,
+               .aggressing_order_id = aggressor->order_id,
+               .aggressing_client_order_id = aggressor->client_order_id,
+               .aggressing_client_id = aggressor->client_id,
+               .aggressing_remaining_quantity = aggressor->remaining_quantity,
+               .resting_order_id = resting->order_id,
+               .resting_client_order_id = resting->client_order_id,
+               .resting_client_id = resting->client_id,
+               .resting_remaining_quantity = resting->remaining_quantity
+           }
+       );
+
         if (resting->remaining_quantity == 0) {
             level.remove(resting);
 
-            const bool erased = orders_by_id_.erase(resting->order_id);
+            const bool erased [[maybe_unused]] = orders_by_id_.erase(resting->order_id);
             assert(erased);
 
             --active_bid_orders_;

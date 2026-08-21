@@ -4,6 +4,7 @@
 
 #include "engine/MatchingEngine.h"
 #include "TestConfig.h"
+#include "TestSinks.h"
 
 namespace sixchange {
 namespace {
@@ -54,7 +55,7 @@ constexpr EngineCommand make_cancel_order(
 TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id, test::OrderBookConfig};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -64,10 +65,7 @@ TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
         Price{100},
         Quantity{50}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, OrderId{1});
@@ -99,7 +97,7 @@ TEST(MatchingEngineTests, ProcessesNewBuyOrder) {
 TEST(MatchingEngineTests, ProcessesNewSellOrder) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id, test::OrderBookConfig};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -109,10 +107,7 @@ TEST(MatchingEngineTests, ProcessesNewSellOrder) {
         Price{105},
         Quantity{25}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, OrderId{1});
@@ -144,7 +139,7 @@ TEST(MatchingEngineTests, ProcessesNewSellOrder) {
 TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id, test::OrderBookConfig};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand first = make_new_order(
         symbol_id,
@@ -163,11 +158,8 @@ TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
         Price{101},
         Quantity{20}
     );
-
-    MatchingEngine::Events events;
-
-    const auto first_result = engine.process(first, events);
-    const auto second_result = engine.process(second, events);
+    const auto first_result = engine.process(first);
+    const auto second_result = engine.process(second);
 
     ASSERT_TRUE(first_result.has_value());
     ASSERT_TRUE(second_result.has_value());
@@ -197,7 +189,7 @@ TEST(MatchingEngineTests, AssignsIncreasingOrderIds) {
 TEST(MatchingEngineTests, RejectsOrderForWrongSymbol) {
     constexpr SymbolId engine_symbol{1};
 
-    MatchingEngine engine{engine_symbol, test::OrderBookConfig};
+    test::MatchingEngineHarness engine{engine_symbol, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         SymbolId{2},
@@ -207,10 +199,7 @@ TEST(MatchingEngineTests, RejectsOrderForWrongSymbol) {
         Price{100},
         Quantity{10}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -228,7 +217,7 @@ TEST(MatchingEngineTests, RejectsOrderForWrongSymbol) {
 TEST(MatchingEngineTests, RejectsOrderWithZeroQuantity) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    test::MatchingEngineHarness engine{symbol_id};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -238,10 +227,7 @@ TEST(MatchingEngineTests, RejectsOrderWithZeroQuantity) {
         Price{100},
         Quantity{0}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -259,7 +245,7 @@ TEST(MatchingEngineTests, RejectsOrderWithZeroQuantity) {
 TEST(MatchingEngineTests, RejectsOrderWithOutOfRangePrice) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id, test::OrderBookConfig};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -269,10 +255,7 @@ TEST(MatchingEngineTests, RejectsOrderWithOutOfRangePrice) {
         Price{test::OrderBookConfig.price_level_count + 1},
         Quantity{10}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(
@@ -284,7 +267,7 @@ TEST(MatchingEngineTests, RejectsOrderWithOutOfRangePrice) {
 TEST(MatchingEngineTests, RejectedOrderDoesNotConsumeOrderId) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    test::MatchingEngineHarness engine{symbol_id};
 
     constexpr EngineCommand rejected = make_new_order(
         symbol_id,
@@ -303,14 +286,11 @@ TEST(MatchingEngineTests, RejectedOrderDoesNotConsumeOrderId) {
         Price{101},
         Quantity{10}
     );
-
-    MatchingEngine::Events events;
-
     const auto rejected_result =
-        engine.process(rejected, events);
+        engine.process(rejected);
 
     const auto accepted_result =
-        engine.process(accepted, events);
+        engine.process(accepted);
 
     ASSERT_FALSE(rejected_result.has_value());
     ASSERT_TRUE(accepted_result.has_value());
@@ -327,7 +307,7 @@ TEST(MatchingEngineTests, RejectedOrderDoesNotConsumeOrderId) {
 TEST(MatchingEngineTests, PreservesCommandSequenceNumber) {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{symbol_id};
+    test::MatchingEngineHarness engine{symbol_id};
 
     constexpr EngineCommand command = make_new_order(
         symbol_id,
@@ -337,10 +317,7 @@ TEST(MatchingEngineTests, PreservesCommandSequenceNumber) {
         Price{100},
         Quantity{10}
     );
-
-    MatchingEngine::Events events;
-
-    const auto result = engine.process(command, events);
+    const auto result = engine.process(command);
 
     ASSERT_TRUE(result.has_value());
 
@@ -360,13 +337,10 @@ TEST(
 {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{
+    test::MatchingEngineHarness engine{
         symbol_id,
         test::OrderBookConfig
     };
-
-    MatchingEngine::Events events;
-
     const auto accepted = engine.process(
         make_new_order(
             symbol_id,
@@ -375,9 +349,7 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        ),
-        events
-    );
+        ));
 
     ASSERT_TRUE(accepted.has_value());
     EXPECT_EQ(*accepted, OrderId{1});
@@ -388,9 +360,7 @@ TEST(
             SequenceNumber{2},
             OrderId{1},
             ClientOrderId{100}
-        ),
-        events
-    );
+        ));
 
     ASSERT_TRUE(cancelled.has_value());
     EXPECT_EQ(*cancelled, OrderId{1});
@@ -408,22 +378,17 @@ TEST(
 {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{
+    test::MatchingEngineHarness engine{
         symbol_id,
         test::OrderBookConfig
     };
-
-    MatchingEngine::Events events;
-
     const auto result = engine.process(
         make_cancel_order(
             symbol_id,
             SequenceNumber{1},
             OrderId{999},
             ClientOrderId{100}
-        ),
-        events
-    );
+        ));
 
     ASSERT_FALSE(result.has_value());
 
@@ -439,13 +404,10 @@ TEST(
 {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{
+    test::MatchingEngineHarness engine{
         symbol_id,
         test::OrderBookConfig
     };
-
-    MatchingEngine::Events events;
-
     ASSERT_TRUE(engine.process(
         make_new_order(
             symbol_id,
@@ -454,9 +416,7 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        ),
-        events
-    ).has_value());
+        )).has_value());
 
     const auto result = engine.process(
         make_cancel_order(
@@ -465,9 +425,7 @@ TEST(
             OrderId{1},
             ClientOrderId{100},
             ClientId{11}
-        ),
-        events
-    );
+        ));
 
     ASSERT_FALSE(result.has_value());
 
@@ -483,13 +441,10 @@ TEST(
 {
     constexpr SymbolId symbol_id{1};
 
-    MatchingEngine engine{
+    test::MatchingEngineHarness engine{
         symbol_id,
         test::OrderBookConfig
     };
-
-    MatchingEngine::Events events;
-
     const auto first = engine.process(
         make_new_order(
             symbol_id,
@@ -498,9 +453,7 @@ TEST(
             Side::Buy,
             Price{100},
             Quantity{10}
-        ),
-        events
-    );
+        ));
 
     ASSERT_TRUE(first.has_value());
     EXPECT_EQ(*first, OrderId{1});
@@ -511,9 +464,7 @@ TEST(
             SequenceNumber{2},
             OrderId{1},
             ClientOrderId{100}
-        ),
-        events
-    ).has_value());
+        )).has_value());
 
     const auto second = engine.process(
         make_new_order(
@@ -523,12 +474,151 @@ TEST(
             Side::Buy,
             Price{101},
             Quantity{10}
-        ),
-        events
-    );
+        ));
 
     ASSERT_TRUE(second.has_value());
     EXPECT_EQ(*second, OrderId{2});
+}
+
+
+TEST(MatchingEngineEventTests, EmitsAcceptedThenRested) {
+    constexpr SymbolId symbol_id{1};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
+
+    const auto result = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{7},
+            ClientOrderId{100},
+            Side::Buy,
+            Price{100},
+            Quantity{25}
+        )
+    );
+
+    ASSERT_TRUE(result.has_value());
+
+    const auto& events = engine.events();
+    ASSERT_EQ(events.size(), 2U);
+
+    ASSERT_EQ(events[0].type, EngineEventType::OrderAccepted);
+    EXPECT_EQ(events[0].order_accepted.seq, SequenceNumber{7});
+    EXPECT_EQ(events[0].order_accepted.order_id, OrderId{1});
+    EXPECT_EQ(events[0].order_accepted.client_order_id, ClientOrderId{100});
+    EXPECT_EQ(events[0].order_accepted.quantity, Quantity{25});
+
+    ASSERT_EQ(events[1].type, EngineEventType::OrderRested);
+    EXPECT_EQ(events[1].order_rested.seq, SequenceNumber{7});
+    EXPECT_EQ(events[1].order_rested.order_id, OrderId{1});
+    EXPECT_EQ(events[1].order_rested.remaining_quantity, Quantity{25});
+}
+
+TEST(MatchingEngineEventTests, EmitsTradeWithEngineTradeId) {
+    constexpr SymbolId symbol_id{1};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
+
+    ASSERT_TRUE(
+        engine.process(
+            make_new_order(
+                symbol_id,
+                SequenceNumber{1},
+                ClientOrderId{100},
+                Side::Sell,
+                Price{100},
+                Quantity{10}
+            )
+        ).has_value()
+    );
+
+    const auto result = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{2},
+            ClientOrderId{101},
+            Side::Buy,
+            Price{100},
+            Quantity{10}
+        )
+    );
+
+    ASSERT_TRUE(result.has_value());
+
+    const auto& events = engine.events();
+    ASSERT_EQ(events.size(), 2U);
+    ASSERT_EQ(events[0].type, EngineEventType::OrderAccepted);
+    ASSERT_EQ(events[1].type, EngineEventType::TradeExecuted);
+
+    const TradeExecutedEvent& trade = events[1].trade_executed;
+    EXPECT_EQ(trade.seq, SequenceNumber{2});
+    EXPECT_EQ(trade.trade_id, TradeId{1});
+    EXPECT_EQ(trade.price, Price{100});
+    EXPECT_EQ(trade.quantity, Quantity{10});
+    EXPECT_EQ(trade.aggressing_side, Side::Buy);
+    EXPECT_EQ(trade.aggressing_order_id, OrderId{2});
+    EXPECT_EQ(trade.resting_order_id, OrderId{1});
+    EXPECT_EQ(trade.aggressing_remaining_quantity, Quantity{0});
+    EXPECT_EQ(trade.resting_remaining_quantity, Quantity{0});
+}
+
+TEST(MatchingEngineEventTests, EmitsCommandRejected) {
+    constexpr SymbolId symbol_id{1};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
+
+    const auto result = engine.process(
+        make_new_order(
+            symbol_id,
+            SequenceNumber{9},
+            ClientOrderId{100},
+            Side::Buy,
+            Price{100},
+            Quantity{0}
+        )
+    );
+
+    ASSERT_FALSE(result.has_value());
+
+    const auto& events = engine.events();
+    ASSERT_EQ(events.size(), 1U);
+    ASSERT_EQ(events[0].type, EngineEventType::CommandRejected);
+    EXPECT_EQ(events[0].command_rejected.seq, SequenceNumber{9});
+    EXPECT_EQ(events[0].command_rejected.command_type, CommandType::NewOrder);
+    EXPECT_EQ(events[0].command_rejected.reason, RejectReason::InvalidQuantity);
+}
+
+TEST(MatchingEngineEventTests, EmitsOrderCancelled) {
+    constexpr SymbolId symbol_id{1};
+    test::MatchingEngineHarness engine{symbol_id, test::OrderBookConfig};
+
+    ASSERT_TRUE(
+        engine.process(
+            make_new_order(
+                symbol_id,
+                SequenceNumber{1},
+                ClientOrderId{100},
+                Side::Buy,
+                Price{100},
+                Quantity{10}
+            )
+        ).has_value()
+    );
+
+    const auto result = engine.process(
+        make_cancel_order(
+            symbol_id,
+            SequenceNumber{2},
+            OrderId{1},
+            ClientOrderId{100}
+        )
+    );
+
+    ASSERT_TRUE(result.has_value());
+
+    const auto& events = engine.events();
+    ASSERT_EQ(events.size(), 1U);
+    ASSERT_EQ(events[0].type, EngineEventType::OrderCancelled);
+    EXPECT_EQ(events[0].order_cancelled.seq, SequenceNumber{2});
+    EXPECT_EQ(events[0].order_cancelled.order_id, OrderId{1});
+    EXPECT_EQ(events[0].order_cancelled.cancelled_quantity, Quantity{10});
 }
 
 } // namespace

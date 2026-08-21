@@ -26,17 +26,6 @@ enum class CommandType : std::uint8_t {
     ReplaceOrder
 };
 
-enum class EventType : std::uint8_t {
-    OrderAccepted,
-    OrderRejected,
-    OrderAdded,
-    OrderExecuted,
-    OrderPartiallyFilled,
-    OrderFilled,
-    OrderCancelled,
-    OrderReplaced,
-    OrderExpired
-};
 
 enum class RejectReason : std::uint8_t {
     None,

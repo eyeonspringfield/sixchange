@@ -3,17 +3,27 @@
 #include <string_view>
 #include <variant>
 
+#include <sixchange/core/EngineEventDispatcher.h>
+#include <sixchange/protocol/OutboundMessageSink.h>
+
 #include "engine/MatchingEngine.h"
 #include "engine/Sequencer.h"
 #include "gateway/OrderGateway.h"
 #include "protocol/TextCodec.h"
 #include "TestConfig.h"
+#include "TestSinks.h"
 
 namespace sixchange {
 namespace {
 
 class OrderFlowIntegrationTests : public testing::Test {
 protected:
+    void SetUp() override {
+        ASSERT_TRUE(
+            dispatcher_.add_sink(EngineEventSink::from(gateway_))
+        );
+    }
+
     [[nodiscard]] protocol::OutboundMessage submit_text(const std::string_view text) {
         const auto decoded = codec_.decode(text);
 
@@ -21,12 +31,23 @@ protected:
             return protocol::OutboundMessage{decoded.error()};
         }
 
-        return gateway_.handle(*decoded);
+        outbound_.clear();
+        gateway_.handle(*decoded);
+        return outbound_.take_single();
     }
 
     protocol::TextCodec codec_{};
-    MatchingEngine engine_{SymbolId{0}, test::OrderBookConfig};
-    OrderGateway gateway_{engine_};
+    EngineEventDispatcher<> dispatcher_{};
+    test::OutboundMessageCollector outbound_{};
+    MatchingEngine engine_{
+        SymbolId{0},
+        EngineEventSink::from(dispatcher_),
+        test::OrderBookConfig
+    };
+    OrderGateway gateway_{
+        engine_,
+        protocol::OutboundMessageSink::from(outbound_)
+    };
 };
 
 TEST_F(OrderFlowIntegrationTests, DecodesAcceptsAndRestsBuyOrder) {

@@ -1,33 +1,32 @@
 #include "gateway/OrderGateway.h"
 
+#include <exception>
 #include <type_traits>
 #include <variant>
 
-#include "logging/Log.h"
 #include "core/EnumNames.h"
+#include "logging/Log.h"
 
 namespace sixchange {
 
-OrderGateway::OrderGateway(MatchingEngine& engine) noexcept : engine_{engine} {
+OrderGateway::OrderGateway(MatchingEngine& engine, const protocol::OutboundMessageSink outbound_sink) noexcept
+    : engine_{engine},
+      outbound_sink_{outbound_sink} {
 }
 
-protocol::OutboundMessage OrderGateway::handle(const protocol::InboundMessage& message) {
-    return std::visit(
-        [this]<typename T>(const T& request) -> protocol::OutboundMessage {
+void OrderGateway::handle(const protocol::InboundMessage& message) noexcept {
+    std::visit(
+        [this]<typename T>(const T& request) noexcept {
             using Request = std::remove_cvref_t<T>;
 
             if constexpr (std::same_as<Request, protocol::NewOrderRequest>) {
-                return handle_new_order(request);
+                handle_new_order(request);
             } else if constexpr (std::same_as<Request, protocol::CancelOrderRequest>) {
-                return handle_cancel_order(request);
+                handle_cancel_order(request);
             }
-
-            return protocol::OrderRejected{
-                .client_order_id = request.client_order_id,
-                .reason = RejectReason::GatewayError
-            };
         },
-        message);
+        message
+    );
 }
 
 std::optional<SymbolId> OrderGateway::resolve_symbol(const std::string_view symbol) noexcept {
@@ -39,20 +38,16 @@ std::optional<SymbolId> OrderGateway::resolve_symbol(const std::string_view symb
     return std::nullopt;
 }
 
-protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrderRequest& request) {
-    MatchingEngine::Events events;
-
+void OrderGateway::handle_new_order(const protocol::NewOrderRequest& request) noexcept {
     if (client_orders_.contains(request.client_order_id)) {
         SIXCHANGE_LOG_DEBUG(
             "New order rejected client_order_id={} reason={}",
             request.client_order_id,
             names::reject_reason(RejectReason::DuplicateClientOrderId)
-       );
+        );
 
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = RejectReason::DuplicateClientOrderId
-        };
+        emit_rejection(request.client_order_id, RejectReason::DuplicateClientOrderId);
+        return;
     }
 
     const auto symbol_id = resolve_symbol(request.symbol);
@@ -65,10 +60,8 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
             names::reject_reason(RejectReason::UnknownSymbol)
         );
 
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = RejectReason::UnknownSymbol
-        };
+        emit_rejection(request.client_order_id, RejectReason::UnknownSymbol);
+        return;
     }
 
     const SequenceNumber sequence_number = Sequencer::instance().next();
@@ -97,43 +90,10 @@ protocol::OutboundMessage OrderGateway::handle_new_order(const protocol::NewOrde
         *symbol_id
     );
 
-    const auto result = engine_.process(command, events);
-
-    if (!result) {
-        SIXCHANGE_LOG_DEBUG(
-            "New order rejected by engine sequence={}, client_order_id={}, reason={}",
-            sequence_number,
-            request.client_order_id,
-            names::reject_reason(result.error())
-        );
-
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = result.error()
-        };
-    }
-
-    const OrderId order_id = *result;
-
-    client_orders_.emplace(request.client_order_id, order_id);
-
-    SIXCHANGE_LOG_DEBUG(
-        "New order accepted sequence={}, client_order_id={}, order_id={}, symbol_id={}",
-        sequence_number,
-        request.client_order_id,
-        order_id,
-        *symbol_id
-    );
-
-    return protocol::OrderAccepted{
-        .client_order_id = request.client_order_id,
-        .order_id = order_id
-    };
+    engine_.process(command);
 }
 
-protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::CancelOrderRequest& request) {
-    MatchingEngine::Events events;
-
+void OrderGateway::handle_cancel_order(const protocol::CancelOrderRequest& request) noexcept {
     const auto symbol_id = resolve_symbol(request.symbol);
 
     if (!symbol_id) {
@@ -144,10 +104,8 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
             names::reject_reason(RejectReason::UnknownSymbol)
         );
 
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = RejectReason::UnknownSymbol
-        };
+        emit_rejection(request.client_order_id, RejectReason::UnknownSymbol);
+        return;
     }
 
     const auto iterator = client_orders_.find(request.client_order_id);
@@ -159,10 +117,8 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
             names::reject_reason(RejectReason::UnknownOrder)
         );
 
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = RejectReason::UnknownOrder
-        };
+        emit_rejection(request.client_order_id, RejectReason::UnknownOrder);
+        return;
     }
 
     const SequenceNumber sequence_number = Sequencer::instance().next();
@@ -188,34 +144,115 @@ protocol::OutboundMessage OrderGateway::handle_cancel_order(const protocol::Canc
         *symbol_id
     );
 
-    const auto result = engine_.process(command, events);
+    engine_.process(command);
+}
 
-    if (!result) {
+void OrderGateway::on_engine_event(const EngineEvent& event) noexcept {
+    switch (event.type) {
+    case EngineEventType::OrderAccepted: {
+        const auto& accepted = event.order_accepted;
+
+        if (accepted.client_id != client_id_) {
+            return;
+        }
+
+        const auto [iterator, inserted] = client_orders_.emplace(
+            accepted.client_order_id,
+            accepted.order_id
+        );
+        (void)iterator;
+
+        if (!inserted) {
+            SIXCHANGE_LOG_CRITICAL(
+                "Accepted order already exists in gateway mapping client_order_id={}, order_id={}",
+                accepted.client_order_id,
+                accepted.order_id
+            );
+            std::terminate();
+        }
+
         SIXCHANGE_LOG_DEBUG(
-            "Cancel rejected by engine sequence={}, client_order_id={}, order_id={}, reason={}",
-            sequence_number,
-            request.client_order_id,
-            iterator->second,
-            names::reject_reason(result.error())
+            "New order accepted sequence={}, client_order_id={}, order_id={}, symbol_id={}",
+            accepted.seq,
+            accepted.client_order_id,
+            accepted.order_id,
+            accepted.symbol_id
         );
 
-        return protocol::OrderRejected{
-            .client_order_id = request.client_order_id,
-            .reason = result.error()
-        };
+        outbound_sink_.emit(
+            protocol::OutboundMessage{
+                protocol::OrderAccepted{
+                    .client_order_id = accepted.client_order_id,
+                    .order_id = accepted.order_id
+                }
+            }
+        );
+        return;
     }
 
-    SIXCHANGE_LOG_DEBUG(
-        "Cancel accepted sequence={}, client_order_id={}, order_id={}",
-        sequence_number,
-        request.client_order_id,
-        *result
-    );
+    case EngineEventType::CommandRejected: {
+        const auto& rejected = event.command_rejected;
 
-    return protocol::OrderCancelled{
-        .client_order_id = request.client_order_id,
-        .order_id = *result
-    };
+        if (rejected.client_id != client_id_) {
+            return;
+        }
+
+        SIXCHANGE_LOG_DEBUG(
+            "Command rejected by engine sequence={}, client_order_id={}, command_type={}, reason={}",
+            rejected.seq,
+            rejected.client_order_id,
+            names::command_type(rejected.command_type),
+            names::reject_reason(rejected.reason)
+        );
+
+        emit_rejection(rejected.client_order_id, rejected.reason);
+        return;
+    }
+
+    case EngineEventType::OrderCancelled: {
+        const auto& cancelled = event.order_cancelled;
+
+        if (cancelled.client_id != client_id_) {
+            return;
+        }
+
+        SIXCHANGE_LOG_DEBUG(
+            "Cancel accepted sequence={}, client_order_id={}, order_id={}",
+            cancelled.seq,
+            cancelled.client_order_id,
+            cancelled.order_id
+        );
+
+        outbound_sink_.emit(
+            protocol::OutboundMessage{
+                protocol::OrderCancelled{
+                    .client_order_id = cancelled.client_order_id,
+                    .order_id = cancelled.order_id
+                }
+            }
+        );
+        return;
+    }
+
+    case EngineEventType::OrderRested:
+    case EngineEventType::TradeExecuted:
+    case EngineEventType::OrderExpired:
+    case EngineEventType::OrderReplaced:
+        return;
+    }
+}
+
+void OrderGateway::emit_rejection(
+    const std::optional<ClientOrderId> client_order_id,
+    const RejectReason reason) const noexcept {
+    outbound_sink_.emit(
+        protocol::OutboundMessage{
+            protocol::OrderRejected{
+                .client_order_id = client_order_id,
+                .reason = reason
+            }
+        }
+    );
 }
 
 } // namespace sixchange

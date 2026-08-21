@@ -42,6 +42,17 @@ struct ReplaceOrderCommand {
     SymbolId symbol_id;
 };
 
+struct AmendOrderCommand {
+    SequenceNumber seq;
+
+    OrderId order_id;
+    ClientOrderId client_order_id;
+    ClientId client_id;
+    SymbolId symbol_id;
+
+    Quantity new_quantity;
+};
+
 struct EngineCommand {
     CommandType type;
 
@@ -49,6 +60,7 @@ struct EngineCommand {
         NewOrderCommand new_order;
         CancelOrderCommand cancel_order;
         ReplaceOrderCommand replace_order;
+        AmendOrderCommand amend_order;
     };
 };
 
