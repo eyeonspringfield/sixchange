@@ -100,6 +100,17 @@ jobs:
             --preset "${{ matrix.configuration.build_preset }}" \
             --parallel
 
+      - name: Run benchmark
+        if: >
+          github.server_url != 'https://github.com' &&
+          matrix.configuration.name != 'ASan + UBSan tests'
+        env:
+          BENCHMARK_BINARY: ./build/${{ matrix.configuration.build_preset }}/sixchange
+          BENCHMARK_COMPILER: ${{ matrix.compiler.name }}
+          BENCHMARK_CONFIGURATION: ${{ matrix.configuration.name }}
+        run: |
+          ./scripts/benchmark.sh
+
       - name: Run tests
         if: matrix.configuration.test_preset != ''
         run: |
