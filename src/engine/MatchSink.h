@@ -1,10 +1,18 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 
 #include "MatchExecution.h"
 
 namespace sixchange {
+
+template <typename T>
+concept MatchHandler =
+    std::convertible_to<T*, void*> &&
+        requires(T& target, const MatchExecution& execution) {
+            { target.on_match(execution) } noexcept -> std::same_as<void>;
+        };
 
 class MatchSink {
 public:
@@ -18,7 +26,8 @@ public:
         callback_(context_, execution);
     }
 
-    template <typename T> [[nodiscard]] static MatchSink from(T& target) noexcept {
+    template <typename T> requires MatchHandler<T>
+    [[nodiscard]] static MatchSink from(T& target) noexcept {
         return MatchSink{
             &target,
             [](void* context,

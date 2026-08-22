@@ -103,23 +103,13 @@ template <typename T>
 
 template <typename... Args>
 [[nodiscard]] CapturedArguments capture_arguments(Args&&... args) noexcept {
-    static_assert(
-        sizeof...(Args) <=
-        MaximumLogArguments,
-        "Too many asynchronous log arguments"
-    );
+    static_assert(sizeof...(Args) <= MaximumLogArguments, "Too many asynchronous log arguments");
 
     CapturedArguments result{};
 
     if constexpr (sizeof...(Args) != 0) {
         std::size_t index = 0;
-
-        (
-            (
-                result.values[index++] = capture_argument(std::forward<Args>(args))
-            ),
-            ...
-        );
+        ((result.values[index++] = capture_argument(std::forward<Args>(args))), ...);
     }
 
     result.count = static_cast<std::uint8_t>(sizeof...(Args));

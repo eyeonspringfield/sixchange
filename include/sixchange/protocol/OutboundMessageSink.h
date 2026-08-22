@@ -1,10 +1,18 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 
 #include <sixchange/protocol/Messages.h>
 
 namespace sixchange::protocol {
+
+template <typename T>
+concept OutboundMessageHandler =
+    std::convertible_to<T*, void*> &&
+        requires(T& target, const OutboundMessage& message) {
+    { target.on_outbound_message(message) } noexcept -> std::same_as<void>;
+        };
 
 class OutboundMessageSink {
 public:
@@ -19,7 +27,7 @@ public:
         callback_(context_, message);
     }
 
-    template <typename T>
+    template <typename T> requires OutboundMessageHandler<T>
     [[nodiscard]] static OutboundMessageSink from(T& target) noexcept {
         return OutboundMessageSink{
             &target,

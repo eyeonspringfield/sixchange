@@ -36,8 +36,7 @@ public:
           entries_{std::make_unique<Entry[]>(capacity_)} {
     }
 
-    [[nodiscard]]
-    InsertResult insert(const Key key, const Value value) noexcept {
+    [[nodiscard]] InsertResult insert(const Key key, const Value value) noexcept {
         std::size_t index = bucket(key);
 
         for (std::size_t probe{0}; probe < capacity_; ++probe) {
@@ -169,9 +168,7 @@ private:
     [[nodiscard]] std::size_t find_index(const Key key) const noexcept {
         std::size_t index = bucket(key);
 
-        for (std::size_t probe = 0;
-             probe < capacity_;
-             ++probe) {
+        for (std::size_t probe{0}; probe < capacity_; ++probe) {
             const Entry& entry = entries_[index];
 
             if (!entry.occupied) {

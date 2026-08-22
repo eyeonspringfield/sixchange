@@ -32,7 +32,7 @@ private:
 int main() {
     using namespace sixchange;
 
-    logging::AsyncFileLogger logger{"sixchange.log", logging::LogLevel::Debug};
+    logging::AsyncFileLogger logger{"sixchange.log", logging::LogLevel::Warning};
     logging::set_thread_logger(logger);
 
     protocol::TextCodec codec;

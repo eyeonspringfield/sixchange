@@ -59,7 +59,7 @@ AsyncFileLogger::~AsyncFileLogger() {
     output_.flush();
 }
 
-std::uint64_t  AsyncFileLogger::dropped_count() const noexcept {
+std::uint64_t AsyncFileLogger::dropped_count() const noexcept {
     return dropped_records_.load(std::memory_order_relaxed);
 }
 

@@ -1,10 +1,18 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 
 #include <sixchange/core/Events.h>
 
 namespace sixchange {
+
+template <typename T>
+concept EngineEventHandler =
+    std::convertible_to<T*, void*> &&
+        requires(T& target, const EngineEvent& event) {
+        { target.on_engine_event(event) } noexcept -> std::same_as<void>;
+    };
 
 class EngineEventSink {
 public:
@@ -18,11 +26,11 @@ public:
         callback_(context_, event);
     }
 
-    template <typename T> [[nodiscard]] static EngineEventSink from(T& target) noexcept {
+    template <typename T> requires EngineEventHandler<T>
+    [[nodiscard]] static EngineEventSink from(T& target) noexcept {
         return EngineEventSink{
             &target,
-            [](void* context,
-               const EngineEvent& event) noexcept {
+            [](void* context, const EngineEvent& event) noexcept {
                 static_cast<T*>(context)->on_engine_event(event);
             }
         };

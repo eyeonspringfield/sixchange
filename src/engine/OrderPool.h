@@ -12,14 +12,11 @@ class OrderPool {
 public:
     explicit OrderPool(const std::size_t capacity)
         : orders_{std::make_unique<Order[]>(capacity)},
-          capacity_{capacity}
-    {
+          capacity_{capacity} {
         assert(capacity > 0);
     }
 
-    [[nodiscard]]
-    Order* allocate() noexcept
-    {
+    [[nodiscard]] Order* allocate() noexcept {
         if (free_head_ != nullptr) {
             Order* const order = free_head_;
             free_head_ = free_head_->next;
@@ -35,8 +32,7 @@ public:
         return &orders_[size_++];
     }
 
-    void release(Order* const order) noexcept
-    {
+    void release(Order* const order) noexcept {
         assert(order != nullptr);
 
         *order = Order{};
@@ -44,15 +40,11 @@ public:
         free_head_ = order;
     }
 
-    [[nodiscard]]
-    std::size_t capacity() const noexcept
-    {
+    [[nodiscard]] std::size_t capacity() const noexcept {
         return capacity_;
     }
 
-    [[nodiscard]]
-    std::size_t allocated_slots() const noexcept
-    {
+    [[nodiscard]] std::size_t allocated_slots() const noexcept {
         return size_;
     }
 
