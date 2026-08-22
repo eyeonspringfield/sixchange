@@ -28,9 +28,9 @@ jobs:
             cc: gcc-14
             cxx: g++-14
 
-          - name: Clang 18
-            cc: clang-18
-            cxx: clang++-18
+          - name: Clang 19
+            cc: clang-19
+            cxx: clang++-19
 
         configuration:
           - name: Debug + tests
@@ -60,6 +60,25 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Ensure Clang 19 is available
+        if: matrix.compiler.name == 'Clang 19'
+        shell: bash
+        run: |
+          if command -v clang-19 >/dev/null 2>&1 &&
+             command -v clang++-19 >/dev/null 2>&1; then
+            echo "Clang 19 already available"
+            exit 0
+          fi
+
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y clang-19
+            exit 0
+          fi
+
+          echo "Clang 19 is not installed and this runner is not APT-based." >&2
+          exit 1
 
       - name: Show toolchain versions
         run: |
@@ -94,12 +113,31 @@ jobs:
     timeout-minutes: 20
 
     env:
-      CC: clang-18
-      CXX: clang++-18
+      CC: clang-19
+      CXX: clang++-19
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Ensure Clang 19 tools are available
+        shell: bash
+        run: |
+          if command -v clang-19 >/dev/null 2>&1 &&
+             command -v clang++-19 >/dev/null 2>&1 &&
+             command -v clang-tidy-19 >/dev/null 2>&1; then
+            echo "Clang 19 tools already available"
+            exit 0
+          fi
+          
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y clang-19 clang-tidy-19
+            exit 0
+          fi
+          
+          echo "Clang 19 tools are not installed and this runner is not APT-based." >&2
+          exit 1
 
       - name: Configure compile database
         run: |
@@ -135,6 +173,6 @@ jobs:
               -0 \
               -n 1 \
               -P "$(nproc)" \
-              clang-tidy-18 \
+              clang-tidy-19 \
               -p build/debug \
               --quiet
